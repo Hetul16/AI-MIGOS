@@ -93,7 +93,7 @@ const AIAssistantSidebar = ({ isOpen = false, onToggle, contextData = null }) =>
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-70 lg:hidden"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-70"
           onClick={onToggle}
         />
       )}
@@ -103,7 +103,7 @@ const AIAssistantSidebar = ({ isOpen = false, onToggle, contextData = null }) =>
           fixed right-0 top-0 h-full w-80 glass border-l border-border/50 z-80
           transform transition-transform duration-300 ease-spring
           ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-          lg:translate-x-0 lg:w-96
+          lg:w-96
         `}
       >
         {/* Header */}
@@ -122,7 +122,7 @@ const AIAssistantSidebar = ({ isOpen = false, onToggle, contextData = null }) =>
             size="sm"
             iconName="X"
             onClick={onToggle}
-            className="lg:hidden"
+            className=""
           />
         </div>
 
@@ -218,7 +218,7 @@ const AIAssistantSidebar = ({ isOpen = false, onToggle, contextData = null }) =>
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-intelligent rounded-full shadow-prominent ai-glow flex items-center justify-center z-70 lg:hidden interactive-scale"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-intelligent rounded-full shadow-prominent ai-glow flex items-center justify-center z-70 interactive-scale"
         >
           <Icon name="MessageCircle" size={24} color="white" />
         </button>

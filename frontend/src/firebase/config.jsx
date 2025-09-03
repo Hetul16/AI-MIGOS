@@ -5,13 +5,13 @@ import { getFirestore } from 'firebase/firestore';
 
 // For development, you can hardcode the config or use import.meta.env for Vite
 const firebaseConfig = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "your-api-key-here",
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "your-project-id",
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:123456789:web:abcdef",
-  measurementId: import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID || "G-XXXXXXXXXX",
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyACegEEmlkvupRtBHd9K69wSw2mkYUSD74",
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "ai-migos-2f390.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "ai-migos-2f390",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "ai-migos-2f390.firebasestorage.app",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "577385561736",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:577385561736:web:0021b342373f07aecf693d",
+  measurementId: import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID || "G-FLCR5VCE9R",
 };
 
 // Initialize Firebase
