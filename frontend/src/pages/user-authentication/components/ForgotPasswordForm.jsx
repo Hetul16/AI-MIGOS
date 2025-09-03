@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
+import authService from '../../../services/authService';
 
 const ForgotPasswordForm = ({ onBack }) => {
   const [email, setEmail] = useState('');
@@ -12,25 +13,31 @@ const ForgotPasswordForm = ({ onBack }) => {
 
   const handleSubmit = async (e) => {
     e?.preventDefault();
-    
+
     if (!email) {
       setError('Email is required');
       return;
     }
-    
-    if (!/\S+@\S+\.\S+/?.test(email)) {
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
       setError('Please enter a valid email');
       return;
     }
-    
+
     setIsLoading(true);
     setError('');
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsSuccess(true);
+
+    try {
+      const result = await authService.resetPassword(email);
+
+      if (result.success) {
+        setIsSuccess(true);
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   if (isSuccess) {
@@ -51,6 +58,9 @@ const ForgotPasswordForm = ({ onBack }) => {
             We've sent a password reset link to <br />
             <span className="text-foreground font-caption-medium">{email}</span>
           </p>
+          <p className="text-xs text-muted-foreground font-caption">
+            Check your spam folder if you don't see the email
+          </p>
         </div>
         <div className="space-y-3">
           <Button
@@ -62,7 +72,7 @@ const ForgotPasswordForm = ({ onBack }) => {
           >
             Back to Sign In
           </Button>
-          
+
           <button
             onClick={() => setIsSuccess(false)}
             className="text-sm text-accent hover:text-accent/80 font-caption transition-colors duration-200"
@@ -88,6 +98,7 @@ const ForgotPasswordForm = ({ onBack }) => {
           Enter your email address and we'll send you a link to reset your password.
         </p>
       </div>
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Email Address"
@@ -113,7 +124,7 @@ const ForgotPasswordForm = ({ onBack }) => {
           >
             {isLoading ? 'Sending...' : 'Send Reset Link'}
           </Button>
-          
+
           <Button
             type="button"
             variant="ghost"

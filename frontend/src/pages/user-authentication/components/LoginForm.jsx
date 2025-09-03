@@ -5,6 +5,7 @@ import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { Checkbox } from '../../../components/ui/Checkbox';
 import Icon from '../../../components/AppIcon';
+import authService from '../../../services/authService';
 
 const LoginForm = ({ onForgotPassword }) => {
   const navigate = useNavigate();
@@ -16,19 +17,13 @@ const LoginForm = ({ onForgotPassword }) => {
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mock credentials for demo
-  const mockCredentials = {
-    email: 'demo@travelai.com',
-    password: 'TravelAI123'
-  };
-
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e?.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    
+
     // Clear error when user starts typing
     if (errors?.[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -37,42 +32,47 @@ const LoginForm = ({ onForgotPassword }) => {
 
   const validateForm = () => {
     const newErrors = {};
-    
+
     if (!formData?.email) {
       newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/?.test(formData?.email)) {
+    } else if (!/\S+@\S+\.\S+/.test(formData?.email)) {
       newErrors.email = 'Please enter a valid email';
     }
-    
+
     if (!formData?.password) {
       newErrors.password = 'Password is required';
-    } else if (formData?.password?.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
-    
+
     setErrors(newErrors);
-    return Object.keys(newErrors)?.length === 0;
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e?.preventDefault();
-    
+
     if (!validateForm()) return;
-    
+
     setIsLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      if (formData?.email === mockCredentials?.email && formData?.password === mockCredentials?.password) {
+    setErrors({});
+
+    try {
+      const result = await authService.loginWithEmail(
+        formData.email,
+        formData.password,
+        formData.rememberMe
+      );
+
+      if (result.success) {
         // Success - redirect to dashboard
         navigate('/trip-planning-wizard');
-      } else {
-        setErrors({
-          submit: 'Invalid email or password. Use demo@travelai.com / TravelAI123'
-        });
       }
+    } catch (error) {
+      setErrors({
+        submit: error.message
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -95,7 +95,7 @@ const LoginForm = ({ onForgotPassword }) => {
           error={errors?.email}
           required
         />
-        
+
         <Input
           label="Password"
           type="password"
@@ -107,6 +107,7 @@ const LoginForm = ({ onForgotPassword }) => {
           required
         />
       </div>
+
       <div className="flex items-center justify-between">
         <Checkbox
           label="Remember me"
@@ -115,7 +116,7 @@ const LoginForm = ({ onForgotPassword }) => {
           onChange={handleInputChange}
           size="sm"
         />
-        
+
         <button
           type="button"
           onClick={onForgotPassword}
@@ -124,6 +125,7 @@ const LoginForm = ({ onForgotPassword }) => {
           Forgot password?
         </button>
       </div>
+
       {errors?.submit && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -134,6 +136,7 @@ const LoginForm = ({ onForgotPassword }) => {
           <p className="text-sm text-error font-caption">{errors?.submit}</p>
         </motion.div>
       )}
+
       <Button
         type="submit"
         variant="default"
@@ -144,12 +147,14 @@ const LoginForm = ({ onForgotPassword }) => {
       >
         {isLoading ? 'Signing In...' : 'Sign In'}
       </Button>
-      {/* Demo credentials hint */}
+
+      {/* Demo credentials hint - Remove in production */}
       <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg">
-        <p className="text-xs text-accent font-caption font-caption-medium mb-1">Demo Credentials:</p>
-        <p className="text-xs text-muted-foreground font-mono">
-          Email: {mockCredentials?.email}<br />
-          Password: {mockCredentials?.password}
+        <p className="text-xs text-accent font-caption font-caption-medium mb-1">
+          Demo Mode:
+        </p>
+        <p className="text-xs text-muted-foreground font-caption">
+          Create an account or use Google Sign-In for authentication
         </p>
       </div>
     </motion.form>

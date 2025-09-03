@@ -17,8 +17,7 @@ const Routes = () => {
       <ScrollToTop />
       <RouterRoutes>
         {/* Define your route here */}
-        <Route path="/" element={<HiddenGemsExplorer />} />
-        <Route path="/landing-page" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/hidden-gems-explorer" element={<HiddenGemsExplorer />} />
         <Route path="/trip-planning-wizard" element={<TripPlanningWizard />} />
         <Route path="/onboarding-wizard" element={<OnboardingWizard />} />
