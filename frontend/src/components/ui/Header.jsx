@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../AppIcon';
 import Button from './Button';
+import { useAuth } from 'contexts/AuthContext';
 
 const Header = () => {
   const location = useLocation();
@@ -54,8 +55,17 @@ const Header = () => {
     setIsProfileOpen(!isProfileOpen);
   };
 
-  const handleLogout = () => {
+  const { isAuthenticated, currentUser, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
     navigate('/user-authentication');
+    setIsProfileOpen(false);
+  };
+
+  const handleLogin = () => {
+    navigate('/user-authentication');
+    setIsMenuOpen(false);
     setIsProfileOpen(false);
   };
 
@@ -146,52 +156,66 @@ const Header = () => {
               )}
             </div>
 
-            {/* Profile Dropdown */}
-            <div className="relative">
-              <button
-                onClick={handleProfileToggle}
-                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors duration-200"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-intelligent flex items-center justify-center text-white text-sm font-caption font-caption-medium">
-                  JD
-                </div>
-                <Icon name="ChevronDown" size={16} className="text-muted-foreground" />
-              </button>
+            {/* Authentication Actions */}
+            {isAuthenticated ? (
+              <div className="relative">
+                <button
+                  onClick={handleProfileToggle}
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors duration-200"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gradient-intelligent flex items-center justify-center text-white text-sm font-caption font-caption-medium">
+                    {currentUser?.displayName ? currentUser.displayName.charAt(0).toUpperCase() : (currentUser?.email ? currentUser.email.charAt(0).toUpperCase() : 'U')}
+                  </div>
+                  <span className="text-sm font-caption font-caption-medium text-foreground hidden sm:inline">
+                    {currentUser?.displayName || currentUser?.email}
+                  </span>
+                  <Icon name="ChevronDown" size={16} className="text-muted-foreground" />
+                </button>
 
-              {isProfileOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 glass glass-hover rounded-xl shadow-prominent z-60 animate-slide-up">
-                  <div className="p-2">
-                    <div className="px-3 py-2 border-b border-border/50">
-                      <p className="text-sm font-caption font-caption-medium text-foreground">John Doe</p>
-                      <p className="text-xs text-muted-foreground">john.doe@example.com</p>
-                    </div>
-                    <div className="py-2">
-                      <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
-                        <Icon name="User" size={16} />
-                        <span className="font-caption">Profile</span>
-                      </button>
-                      <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
-                        <Icon name="Settings" size={16} />
-                        <span className="font-caption">Preferences</span>
-                      </button>
-                      <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
-                        <Icon name="CreditCard" size={16} />
-                        <span className="font-caption">Billing</span>
-                      </button>
-                    </div>
-                    <div className="pt-2 border-t border-border/50">
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-200"
-                      >
-                        <Icon name="LogOut" size={16} />
-                        <span className="font-caption">Sign Out</span>
-                      </button>
+                {isProfileOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 glass glass-hover rounded-xl shadow-prominent z-60 animate-slide-up">
+                    <div className="p-2">
+                      <div className="px-3 py-2 border-b border-border/50">
+                        <p className="text-sm font-caption font-caption-medium text-foreground">{currentUser?.displayName || 'User'}</p>
+                        <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+                      </div>
+                      <div className="py-2">
+                        <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
+                          <Icon name="User" size={16} />
+                          <span className="font-caption">Profile</span>
+                        </button>
+                        <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
+                          <Icon name="Settings" size={16} />
+                          <span className="font-caption">Preferences</span>
+                        </button>
+                        <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
+                          <Icon name="CreditCard" size={16} />
+                          <span className="font-caption">Billing</span>
+                        </button>
+                      </div>
+                      <div className="pt-2 border-t border-border/50">
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-200"
+                        >
+                          <Icon name="LogOut" size={16} />
+                          <span className="font-caption">Sign Out</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleLogin}
+                className="font-caption font-caption-medium"
+              >
+                Login
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -245,15 +269,28 @@ const Header = () => {
                 ))}
               </div>
 
-              <div className="pt-2 border-t border-border/50">
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center space-x-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-200"
-                >
-                  <Icon name="LogOut" size={18} />
-                  <span className="font-caption font-caption-medium">Sign Out</span>
-                </button>
-              </div>
+              {isAuthenticated ? (
+                <div className="pt-2 border-t border-border/50">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center space-x-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-200"
+                  >
+                    <Icon name="LogOut" size={18} />
+                    <span className="font-caption font-caption-medium">Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-border/50">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleLogin}
+                    className="w-full font-caption font-caption-medium"
+                  >
+                    Login
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}

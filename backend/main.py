@@ -4,6 +4,8 @@ import uvicorn
 
 # Import router
 from api.authentication import router as auth_router
+from api.trips import router as trips_router
+from api.payments import router as payments_router
 from core.firebase import init_firebase
 
 # Initialize Firebase
@@ -22,6 +24,12 @@ app.add_middleware(
 
 # Mount authentication router
 app.include_router(auth_router, prefix="/api", tags=["Authentication & User"])
+app.include_router(trips_router, prefix="/api", tags=["Trips"])
+app.include_router(payments_router, prefix="/api", tags=["Payments & Booking"])
+
+@app.get("/")
+def root():
+    return {"message": "TravelAI Pro API is running"}
 
 # Health check
 @app.get("/api/health")
@@ -30,4 +38,4 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow()}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
