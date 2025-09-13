@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import tripService from '../../../services/tripService';
 
 const ItineraryPreview = ({ 
   destination, 
@@ -11,9 +14,12 @@ const ItineraryPreview = ({
   onComplete, 
   onBack 
 }) => {
+  const navigate = useNavigate();
   const [itinerary, setItinerary] = useState(generateMockItinerary());
   const [selectedDay, setSelectedDay] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [tripTitle, setTripTitle] = useState('');
 
   function generateMockItinerary() {
     const days = dates?.duration || 3;
@@ -74,6 +80,98 @@ const ItineraryPreview = ({
 
     return mockItinerary;
   }
+
+  const handleComplete = async () => {
+    if (!tripTitle.trim()) {
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Trip Title Required',
+          message: 'Please enter a title for your trip.',
+          duration: 3000
+        });
+      }
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      // Create trip data structure
+      const tripData = {
+        title: tripTitle,
+        destination: destination?.name || 'Unknown Destination',
+        start_date: dates?.startDate,
+        end_date: dates?.endDate,
+        duration: `${dates?.duration} days`,
+        travelers: 1, // Default to 1, can be updated later
+        budget: {
+          total: budget?.amount || 0,
+          currency: budget?.currency || 'INR',
+          categories: [
+            { name: 'Accommodation', budget: Math.floor((budget?.amount || 0) * 0.4), spent: 0 },
+            { name: 'Transportation', budget: Math.floor((budget?.amount || 0) * 0.3), spent: 0 },
+            { name: 'Food & Dining', budget: Math.floor((budget?.amount || 0) * 0.2), spent: 0 },
+            { name: 'Activities', budget: Math.floor((budget?.amount || 0) * 0.1), spent: 0 }
+          ]
+        },
+        summary: {
+          destination: destination?.name || 'Unknown Destination',
+          center: destination?.coordinates || { lat: 0, lng: 0 },
+          days: itinerary.map((day, index) => ({
+            date: day.date,
+            activities: day.activities.map(activity => ({
+              id: activity.id,
+              title: activity.title,
+              type: activity.type,
+              time: activity.time,
+              duration: activity.duration,
+              cost: activity.cost,
+              location: activity.location,
+              description: activity.description,
+              image: activity.image
+            }))
+          }))
+        },
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // For now, we'll simulate trip creation since we don't have a create trip endpoint
+      // In a real app, you would call: const response = await tripService.createTrip(tripData);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Generate a mock trip ID
+      const tripId = `trip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      if (window.showToast) {
+        window.showToast({
+          type: 'success',
+          title: 'Trip Created Successfully!',
+          message: 'Your trip has been saved and you can now view it in My Trips.',
+          duration: 5000
+        });
+      }
+
+      // Navigate to the trip details page
+      navigate(`/trip-itinerary-details/${tripId}`);
+      
+    } catch (error) {
+      console.error('Error creating trip:', error);
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Failed to Create Trip',
+          message: error.message || 'Something went wrong. Please try again.',
+          duration: 5000
+        });
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const getActivityIcon = (type) => {
     const icons = {
@@ -348,6 +446,27 @@ const ItineraryPreview = ({
           </div>
         </div>
       </div>
+      
+      {/* Trip Title Input */}
+      <div className="glass glass-hover rounded-xl p-6 border border-accent/20">
+        <div className="flex items-center space-x-3 mb-4">
+          <Icon name="Edit" size={20} className="text-accent" />
+          <h3 className="text-lg font-heading font-heading-semibold text-foreground">
+            Name Your Trip
+          </h3>
+        </div>
+        <input
+          type="text"
+          value={tripTitle}
+          onChange={(e) => setTripTitle(e.target.value)}
+          placeholder={`${destination?.name || 'Destination'} Adventure`}
+          className="w-full px-4 py-3 rounded-lg bg-muted/20 border border-border/50 text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors duration-200"
+        />
+        <p className="text-sm text-muted-foreground font-caption mt-2">
+          Give your trip a memorable name that you'll recognize later.
+        </p>
+      </div>
+      
       {/* Navigation */}
       <div className="flex items-center justify-between pt-6 border-t border-border/50">
         <button
@@ -368,10 +487,18 @@ const ItineraryPreview = ({
           <Button
             variant="default"
             iconName="Check"
-            onClick={onComplete}
+            onClick={handleComplete}
+            disabled={isCreating}
             className="bg-gradient-intelligent hover:opacity-90"
           >
-            Complete Planning
+            {isCreating ? (
+              <>
+                <LoadingSpinner size="sm" />
+                <span className="ml-2">Creating Trip...</span>
+              </>
+            ) : (
+              'Complete Planning'
+            )}
           </Button>
         </div>
       </div>

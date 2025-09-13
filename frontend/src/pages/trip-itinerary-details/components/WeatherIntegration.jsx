@@ -1,95 +1,179 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import tripService from '../../../services/tripService';
 
-const WeatherIntegration = ({ location, onWeatherAlert }) => {
+const WeatherIntegration = ({ tripId, location, onWeatherAlert }) => {
   const [selectedDay, setSelectedDay] = useState(0);
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'hourly'
+  const [weatherData, setWeatherData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Mock weather data
-  const weatherData = {
-    current: {
-      temperature: 28,
-      condition: 'Partly Cloudy',
-      humidity: 65,
-      windSpeed: 12,
-      uvIndex: 6,
-      visibility: 10,
-      pressure: 1013,
-      icon: 'CloudSun'
-    },
-    forecast: [
-      {
-        date: '2025-01-03',
-        day: 'Today',
-        high: 32,
-        low: 22,
-        condition: 'Partly Cloudy',
-        humidity: 65,
-        windSpeed: 12,
-        precipitation: 10,
-        icon: 'CloudSun',
-        hourly: [
-          { time: '06:00', temp: 22, condition: 'Clear', icon: 'Sun', precipitation: 0 },
-          { time: '09:00', temp: 26, condition: 'Partly Cloudy', icon: 'CloudSun', precipitation: 5 },
-          { time: '12:00', temp: 30, condition: 'Partly Cloudy', icon: 'CloudSun', precipitation: 10 },
-          { time: '15:00', temp: 32, condition: 'Cloudy', icon: 'Cloud', precipitation: 15 },
-          { time: '18:00', temp: 28, condition: 'Light Rain', icon: 'CloudRain', precipitation: 60 },
-          { time: '21:00', temp: 24, condition: 'Clear', icon: 'Moon', precipitation: 0 }
-        ]
-      },
-      {
-        date: '2025-01-04',
-        day: 'Tomorrow',
-        high: 29,
-        low: 20,
-        condition: 'Light Rain',
-        humidity: 78,
-        windSpeed: 15,
-        precipitation: 70,
-        icon: 'CloudRain',
-        hourly: [
-          { time: '06:00', temp: 20, condition: 'Cloudy', icon: 'Cloud', precipitation: 20 },
-          { time: '09:00', temp: 23, condition: 'Light Rain', icon: 'CloudRain', precipitation: 70 },
-          { time: '12:00', temp: 26, condition: 'Heavy Rain', icon: 'CloudRain', precipitation: 90 },
-          { time: '15:00', temp: 29, condition: 'Light Rain', icon: 'CloudRain', precipitation: 60 },
-          { time: '18:00', temp: 25, condition: 'Cloudy', icon: 'Cloud', precipitation: 30 },
-          { time: '21:00', temp: 22, condition: 'Clear', icon: 'Moon', precipitation: 5 }
-        ]
-      },
-      {
-        date: '2025-01-05',
-        day: 'Sunday',
-        high: 35,
-        low: 25,
-        condition: 'Sunny',
-        humidity: 45,
-        windSpeed: 8,
-        precipitation: 0,
-        icon: 'Sun',
-        hourly: [
-          { time: '06:00', temp: 25, condition: 'Clear', icon: 'Sun', precipitation: 0 },
-          { time: '09:00', temp: 29, condition: 'Sunny', icon: 'Sun', precipitation: 0 },
-          { time: '12:00', temp: 33, condition: 'Sunny', icon: 'Sun', precipitation: 0 },
-          { time: '15:00', temp: 35, condition: 'Sunny', icon: 'Sun', precipitation: 0 },
-          { time: '18:00', temp: 31, condition: 'Clear', icon: 'Sun', precipitation: 0 },
-          { time: '21:00', temp: 27, condition: 'Clear', icon: 'Moon', precipitation: 0 }
-        ]
+  // Fetch weather data
+  const fetchWeatherData = async () => {
+    if (!tripId) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await tripService.getTripWeather(tripId);
+      if (response.success && response.weather) {
+        setWeatherData(response.weather);
+        setLastUpdated(new Date());
+        
+        // Check for weather alerts
+        if (response.weather.daily) {
+          const alerts = generateWeatherAlerts(response.weather.daily);
+          if (alerts.length > 0 && onWeatherAlert) {
+            onWeatherAlert(alerts);
+          }
+        }
       }
-    ]
+    } catch (err) {
+      console.error('Error fetching weather:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const weatherAlerts = [
-    {
-      id: 1,
-      type: 'rain',
-      severity: 'medium',
-      title: 'Heavy Rain Expected',
-      message: 'Heavy rainfall expected tomorrow afternoon. Consider indoor activities or carry umbrellas.',
-      affectedActivities: ['City Walking Tour', 'Outdoor Market Visit'],
-      recommendations: ['Visit museums instead', 'Book covered transportation', 'Pack rain gear']
-    }
-  ];
+  // Generate weather alerts based on forecast data
+  const generateWeatherAlerts = (dailyForecast) => {
+    const alerts = [];
+    
+    dailyForecast.forEach((day, index) => {
+      const temp = day.temp;
+      const precipitation = day.pop || 0;
+      const weather = day.weather?.[0];
+      
+      // High temperature alert
+      if (temp?.max > 35) {
+        alerts.push({
+          id: `temp_${index}`,
+          type: 'temperature',
+          severity: 'high',
+          title: 'High Temperature Warning',
+          message: `Temperature expected to reach ${Math.round(temp.max)}°C. Stay hydrated and avoid outdoor activities during peak hours.`,
+          affectedActivities: ['Outdoor sightseeing', 'Walking tours', 'Beach activities'],
+          recommendations: ['Stay hydrated', 'Use sunscreen', 'Plan indoor activities', 'Wear light clothing']
+        });
+      }
+      
+      // Heavy rain alert
+      if (precipitation > 70) {
+        alerts.push({
+          id: `rain_${index}`,
+          type: 'rain',
+          severity: 'high',
+          title: 'Heavy Rain Expected',
+          message: `Heavy rainfall expected (${Math.round(precipitation)}% chance). Consider indoor activities or carry umbrellas.`,
+          affectedActivities: ['Outdoor tours', 'Walking activities', 'Beach visits'],
+          recommendations: ['Visit museums', 'Book covered transportation', 'Pack rain gear', 'Plan indoor activities']
+        });
+      }
+      
+      // Moderate rain alert
+      if (precipitation > 40 && precipitation <= 70) {
+        alerts.push({
+          id: `moderate_rain_${index}`,
+          type: 'rain',
+          severity: 'medium',
+          title: 'Rain Expected',
+          message: `Rain expected (${Math.round(precipitation)}% chance). Consider carrying umbrellas.`,
+          affectedActivities: ['Outdoor activities'],
+          recommendations: ['Carry umbrella', 'Wear waterproof shoes', 'Have backup indoor plans']
+        });
+      }
+    });
+    
+    return alerts;
+  };
+
+  // Process weather data from API
+  const processWeatherData = (apiData) => {
+    if (!apiData || !apiData.daily) return null;
+    
+    const daily = apiData.daily.map((day, index) => {
+      const weather = day.weather?.[0];
+      const temp = day.temp;
+      
+      return {
+        date: day.dt,
+        day: index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(day.dt).toLocaleDateString('en-US', { weekday: 'long' }),
+        high: Math.round(temp?.max || temp?.day || 0),
+        low: Math.round(temp?.min || temp?.night || 0),
+        condition: weather?.main || 'Unknown',
+        description: weather?.description || '',
+        humidity: Math.round((day.humidity || 0) * 100),
+        windSpeed: Math.round(day.wind_speed || 0),
+        precipitation: Math.round((day.pop || 0) * 100),
+        icon: getWeatherIconFromCondition(weather?.main),
+        hourly: generateHourlyForecast(day, index)
+      };
+    });
+    
+    return {
+      current: {
+        temperature: Math.round(daily[0]?.high || 0),
+        condition: daily[0]?.condition || 'Unknown',
+        humidity: daily[0]?.humidity || 0,
+        windSpeed: daily[0]?.windSpeed || 0,
+        uvIndex: Math.round(apiData.current?.uvi || 0),
+        visibility: Math.round((apiData.current?.visibility || 0) / 1000),
+        pressure: Math.round(apiData.current?.pressure || 0),
+        icon: daily[0]?.icon || 'Sun'
+      },
+      forecast: daily
+    };
+  };
+
+  // Generate hourly forecast (mock data for now)
+  const generateHourlyForecast = (day, dayIndex) => {
+    const hours = [6, 9, 12, 15, 18, 21];
+    const baseTemp = day.temp?.day || 25;
+    const condition = day.weather?.[0]?.main || 'Clear';
+    
+    return hours.map(hour => ({
+      time: `${hour.toString().padStart(2, '0')}:00`,
+      temp: Math.round(baseTemp + (Math.random() - 0.5) * 4),
+      condition: condition,
+      icon: getWeatherIconFromCondition(condition),
+      precipitation: Math.round((day.pop || 0) * 100)
+    }));
+  };
+
+  // Map weather conditions to icons
+  const getWeatherIconFromCondition = (condition) => {
+    const iconMap = {
+      'Clear': 'Sun',
+      'Sunny': 'Sun',
+      'Clouds': 'Cloud',
+      'Cloudy': 'Cloud',
+      'Partly Cloudy': 'CloudSun',
+      'Rain': 'CloudRain',
+      'Drizzle': 'CloudRain',
+      'Thunderstorm': 'CloudRain',
+      'Snow': 'CloudSnow',
+      'Mist': 'Cloud',
+      'Fog': 'Cloud',
+      'Haze': 'Cloud'
+    };
+    return iconMap[condition] || 'Sun';
+  };
+
+  useEffect(() => {
+    fetchWeatherData();
+  }, [tripId]);
+
+  // Process weather data when it's loaded
+  const processedWeatherData = weatherData ? processWeatherData(weatherData) : null;
+
+  // Generate weather alerts from processed data
+  const weatherAlerts = processedWeatherData ? generateWeatherAlerts(processedWeatherData.forecast) : [];
 
   const activityRecommendations = {
     'Sunny': {
@@ -127,8 +211,76 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
     return 'text-accent';
   };
 
-  const selectedForecast = weatherData?.forecast?.[selectedDay];
+  const selectedForecast = processedWeatherData?.forecast?.[selectedDay];
   const currentRecommendations = activityRecommendations?.[selectedForecast?.condition] || activityRecommendations?.['Partly Cloudy'];
+
+  // Show loading state
+  if (loading && !processedWeatherData) {
+    return (
+      <div className="space-y-6">
+        <div className="glass glass-hover rounded-2xl p-6">
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner size="lg" />
+            <span className="ml-3 text-muted-foreground font-caption">Loading weather data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && !processedWeatherData) {
+    return (
+      <div className="space-y-6">
+        <div className="glass glass-hover rounded-2xl p-6 border-l-4 border-l-error">
+          <div className="flex items-center space-x-3 mb-4">
+            <Icon name="AlertTriangle" size={20} className="text-error" />
+            <h4 className="font-heading font-heading-semibold text-foreground">
+              Weather Data Unavailable
+            </h4>
+          </div>
+          <p className="text-muted-foreground font-caption mb-4">
+            {error}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            iconName="RefreshCw"
+            onClick={fetchWeatherData}
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show no data state
+  if (!processedWeatherData) {
+    return (
+      <div className="space-y-6">
+        <div className="glass glass-hover rounded-2xl p-6">
+          <div className="text-center py-12">
+            <Icon name="CloudSun" size={48} className="text-muted-foreground mx-auto mb-4" />
+            <h3 className="font-heading font-heading-semibold text-foreground mb-2">
+              No Weather Data
+            </h3>
+            <p className="text-muted-foreground font-caption mb-4">
+              Weather information is not available for this trip.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="RefreshCw"
+              onClick={fetchWeatherData}
+            >
+              Load Weather
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -144,7 +296,7 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
                 Weather Forecast
               </h3>
               <p className="text-sm text-muted-foreground font-caption">
-                {location} • Updated 5 min ago
+                {location} • {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : 'Loading...'}
               </p>
             </div>
           </div>
@@ -152,8 +304,10 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
             variant="outline"
             size="sm"
             iconName="RefreshCw"
+            onClick={fetchWeatherData}
+            disabled={loading}
           >
-            Refresh
+            {loading ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
 
@@ -161,14 +315,14 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 rounded-2xl bg-gradient-intelligent/10 flex items-center justify-center">
-              <Icon name={getWeatherIcon(weatherData?.current?.icon)} size={32} className="text-accent" />
+              <Icon name={getWeatherIcon(processedWeatherData?.current?.icon)} size={32} className="text-accent" />
             </div>
             <div>
-              <p className={`text-3xl font-heading font-heading-bold ${getTemperatureColor(weatherData?.current?.temperature)}`}>
-                {weatherData?.current?.temperature}°C
+              <p className={`text-3xl font-heading font-heading-bold ${getTemperatureColor(processedWeatherData?.current?.temperature)}`}>
+                {processedWeatherData?.current?.temperature}°C
               </p>
               <p className="text-sm text-muted-foreground font-caption">
-                {weatherData?.current?.condition}
+                {processedWeatherData?.current?.condition}
               </p>
             </div>
           </div>
@@ -178,28 +332,28 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
               <Icon name="Droplets" size={16} className="text-accent mx-auto mb-1" />
               <p className="text-xs text-muted-foreground font-caption">Humidity</p>
               <p className="text-sm font-caption font-caption-medium text-foreground">
-                {weatherData?.current?.humidity}%
+                {processedWeatherData?.current?.humidity}%
               </p>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/20">
               <Icon name="Wind" size={16} className="text-accent mx-auto mb-1" />
               <p className="text-xs text-muted-foreground font-caption">Wind</p>
               <p className="text-sm font-caption font-caption-medium text-foreground">
-                {weatherData?.current?.windSpeed} km/h
+                {processedWeatherData?.current?.windSpeed} km/h
               </p>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/20">
               <Icon name="Sun" size={16} className="text-accent mx-auto mb-1" />
               <p className="text-xs text-muted-foreground font-caption">UV Index</p>
               <p className="text-sm font-caption font-caption-medium text-foreground">
-                {weatherData?.current?.uvIndex}
+                {processedWeatherData?.current?.uvIndex}
               </p>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/20">
               <Icon name="Eye" size={16} className="text-accent mx-auto mb-1" />
               <p className="text-xs text-muted-foreground font-caption">Visibility</p>
               <p className="text-sm font-caption font-caption-medium text-foreground">
-                {weatherData?.current?.visibility} km
+                {processedWeatherData?.current?.visibility} km
               </p>
             </div>
           </div>
@@ -289,7 +443,7 @@ const WeatherIntegration = ({ location, onWeatherAlert }) => {
         {viewMode === 'daily' && (
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {weatherData?.forecast?.map((day, index) => (
+              {processedWeatherData?.forecast?.map((day, index) => (
                 <button
                   key={index}
                   onClick={() => setSelectedDay(index)}

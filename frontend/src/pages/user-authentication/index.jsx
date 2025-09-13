@@ -142,7 +142,7 @@ const UserAuthentication = () => {
         </motion.div>
       </div>
       {/* Mobile Optimization */}
-      <style jsx>{`
+      <style>{`
         @media (max-height: 700px) {
           .min-h-screen {
             min-height: 100vh;

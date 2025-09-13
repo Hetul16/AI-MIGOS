@@ -206,3 +206,17 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(verify_fi
         return {"success": True, "message": "Already cancelled"}
     bookings_col().document(booking_id).update({"status": "cancelled", "cancelled_at": datetime.utcnow()})
     return {"success": True, "message": "Booking cancelled"}
+
+
+@router.get("/bookings")
+async def get_all_bookings(current_user: dict = Depends(verify_firebase_token)):
+    """
+    Retrieve all bookings for the current user.
+    """
+    uid = current_user["uid"]
+    bookings = []
+    # Assuming 'created_at' is a field in your booking documents for ordering
+    query = bookings_col().where("user_id", "==", uid).order_by("created_at", direction="DESCENDING").stream()
+    for doc in query:
+        bookings.append(doc.to_dict())
+    return {"success": True, "bookings": bookings}

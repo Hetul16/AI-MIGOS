@@ -10,6 +10,9 @@ import TripPlanningWizard from './pages/trip-planning-wizard';
 import OnboardingWizard from './pages/onboarding-wizard';
 import UserAuthentication from './pages/user-authentication';
 import TripItineraryDetails from './pages/trip-itinerary-details';
+import TripsList from './pages/trips-list';
+import UserProfilePage from './pages/UserProfilePage';
+import PaymentsPage from './pages/PaymentsPage';
 
 const Routes = () => {
   return (
@@ -23,6 +26,14 @@ const Routes = () => {
         <Route path="/onboarding-wizard" element={<OnboardingWizard />} /> {/* Onboarding might be public or protected based on profile completion */}
 
         {/* Protected Routes */}
+        <Route
+          path="/user-profile"
+          element={
+            <ProtectedRoute>
+              <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/hidden-gems-explorer"
           element={
@@ -40,10 +51,26 @@ const Routes = () => {
           }
         />
         <Route
-          path="/trip-itinerary-details"
+          path="/my-trips"
+          element={
+            <ProtectedRoute>
+              <TripsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trip-itinerary-details/:tripId"
           element={
             <ProtectedRoute>
               <TripItineraryDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-payments"
+          element={
+            <ProtectedRoute>
+              <PaymentsPage />
             </ProtectedRoute>
           }
         />

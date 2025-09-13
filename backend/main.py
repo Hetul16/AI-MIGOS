@@ -9,7 +9,9 @@ from api.payments import router as payments_router
 from core.firebase import init_firebase
 
 # Initialize Firebase
-init_firebase()
+firebase_initialized = init_firebase()
+if not firebase_initialized:
+    print("⚠️ Warning: Firebase initialization failed. Some features may not work.")
 
 app = FastAPI(title="TravelAI Pro API", version="1.0.0")
 
@@ -22,10 +24,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add headers to handle COOP issues
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    response.headers["Cross-Origin-Embedder-Policy"] = "unsafe-none"
+    return response
+
 # Mount authentication router
 app.include_router(auth_router, prefix="/api", tags=["Authentication & User"])
-app.include_router(trips_router, prefix="/api", tags=["Trips"])
-app.include_router(payments_router, prefix="/api", tags=["Payments & Booking"])
+app.include_router(trips_router, tags=["Trips"]) # Removed prefix="/api"
+app.include_router(payments_router, tags=["Payments & Booking"]) # Removed prefix="/api"
 
 @app.get("/")
 def root():
@@ -38,4 +48,4 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow()}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

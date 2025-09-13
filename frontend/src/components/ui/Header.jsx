@@ -19,7 +19,7 @@ const Header = () => {
     },
     {
       label: 'My Trips',
-      path: '/trip-itinerary-details',
+      path: '/my-trips',
       icon: 'Calendar',
       tooltip: 'View and manage your trips'
     },
@@ -28,6 +28,12 @@ const Header = () => {
       path: '/hidden-gems-explorer',
       icon: 'Compass',
       tooltip: 'Explore hidden gems and destinations'
+    },
+    {
+      label: 'My Payments',
+      path: '/my-payments',
+      icon: 'CreditCard',
+      tooltip: 'View your payments and bookings'
     }
   ];
 
@@ -180,7 +186,13 @@ const Header = () => {
                         <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
                       </div>
                       <div className="py-2">
-                        <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
+                        <button 
+                          onClick={() => {
+                            navigate('/user-profile');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200"
+                        >
                           <Icon name="User" size={16} />
                           <span className="font-caption">Profile</span>
                         </button>
@@ -191,6 +203,16 @@ const Header = () => {
                         <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200">
                           <Icon name="CreditCard" size={16} />
                           <span className="font-caption">Billing</span>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            navigate('/my-payments');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors duration-200"
+                        >
+                          <Icon name="DollarSign" size={16} />
+                          <span className="font-caption">My Payments</span>
                         </button>
                       </div>
                       <div className="pt-2 border-t border-border/50">

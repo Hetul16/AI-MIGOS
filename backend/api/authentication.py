@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from firebase_admin import auth
-from core.firebase import db
+from core.firebase import get_db
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -65,7 +65,7 @@ async def sync_registered_user(
             "auth_provider": "email"
         }
         
-        db.collection("users").document(uid).set(user_doc)
+        get_db().collection("users").document(uid).set(user_doc)
         
         return {
             "success": True, 
@@ -86,7 +86,7 @@ async def sync_login(current_user: dict = Depends(verify_firebase_token)):
         uid = current_user['uid']
         
         # Update last login in Firestore
-        user_ref = db.collection("users").document(uid)
+        user_ref = get_db().collection("users").document(uid)
         user_doc = user_ref.get()
         
         if not user_doc.exists:
@@ -116,7 +116,7 @@ async def sync_google_auth(auth_request: GoogleAuthRequest):
         email = decoded_token.get('email')
         name = decoded_token.get('name', '')
 
-        user_ref = db.collection("users").document(uid)
+        user_ref = get_db().collection("users").document(uid)
         user_doc = user_ref.get()
         is_new_user = not user_doc.exists
 
@@ -146,6 +146,7 @@ async def sync_google_auth(auth_request: GoogleAuthRequest):
         }
         
     except Exception as e:
+        print(f"Google auth error: {str(e)}")  # Add logging
         raise HTTPException(status_code=400, detail=f"Google authentication sync failed: {str(e)}")
 
 # ------------------- User Profile Endpoints -------------------
@@ -154,7 +155,7 @@ async def get_user_profile(current_user: dict = Depends(verify_firebase_token)):
     """Get user profile data from Firestore."""
     try:
         uid = current_user['uid']
-        user_doc = db.collection("users").document(uid).get()
+        user_doc = get_db().collection("users").document(uid).get()
         
         if not user_doc.exists:
             raise HTTPException(status_code=404, detail="User profile not found")
@@ -176,7 +177,7 @@ async def update_user_profile(
     """Update user profile data in Firestore."""
     try:
         uid = current_user['uid']
-        user_ref = db.collection("users").document(uid)
+        user_ref = get_db().collection("users").document(uid)
         
         # Check if user exists
         if not user_ref.get().exists:
@@ -209,7 +210,7 @@ async def get_travel_preferences(current_user: dict = Depends(verify_firebase_to
     """Get user's travel preferences."""
     try:
         uid = current_user['uid']
-        user_doc = db.collection("users").document(uid).get()
+        user_doc = get_db().collection("users").document(uid).get()
         
         if not user_doc.exists:
             raise HTTPException(status_code=404, detail="User not found")
@@ -230,7 +231,7 @@ async def update_travel_preferences(
         uid = current_user['uid']
         preferences = preferences_data.get('preferences', [])
         
-        user_ref = db.collection("users").document(uid)
+        user_ref = get_db().collection("users").document(uid)
         
         if not user_ref.get().exists:
             raise HTTPException(status_code=404, detail="User not found")

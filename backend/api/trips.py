@@ -9,9 +9,10 @@ import logging
 import math
 import httpx
 import asyncio
+from google.cloud.firestore_v1.base_query import FieldFilter # Added import for FieldFilter
 
 # import your firebase db and verify_firebase_token dependency
-from core.firebase import db  # Firestore client from your project
+from core.firebase import get_db  # Firestore client from your project
 from api.authentication import verify_firebase_token  # your existing dependency
 
 logger = logging.getLogger(__name__)
@@ -67,15 +68,15 @@ class ReserveRequest(BaseModel):
 # Utility helpers
 # -----------------------------
 def itinerary_doc_ref(itinerary_id: str):
-    return db.collection("itineraries").document(itinerary_id)
+    return get_db().collection("itineraries").document(itinerary_id)
 
 
 def reservations_col():
-    return db.collection("reservations")
+    return get_db().collection("reservations")
 
 
 def bookings_col():
-    return db.collection("bookings")
+    return get_db().collection("bookings")
 
 
 async def http_get_json(url: str, params: dict = None, timeout: float = HTTPX_TIMEOUT):
@@ -112,13 +113,13 @@ async def list_trips(status: Optional[str] = None, current_user: dict = Depends(
     """
     uid = current_user["uid"]
     try:
-        q = db.collection("itineraries").where("user_id", "==", uid)
+        q = get_db().collection("itineraries").where(filter=FieldFilter("user_id", "==", uid))
         if status:
-            q = q.where("status", "==", status)
+            q = q.where(filter=FieldFilter("status", "==", status))
         q = q.order_by("created_at", direction="DESCENDING").limit(100)
         docs = q.stream()
         results = []
-        async for d in docs:
+        for d in docs: # Changed from async for to for
             data = d.to_dict()
             data["id"] = d.id
             results.append(data)
@@ -389,7 +390,7 @@ async def reserve_items(itinerary_id: str, body: ReserveRequest, current_user: d
     reservations_col().document(reservation_id).set(reservation_doc)
     # update itinerary to reference this reservation id
     itinerary_doc_ref(itinerary_id).update({
-        "reservations": db.ArrayUnion([reservation_id]),
+        "reservations": get_db().ArrayUnion([reservation_id]),
         "updated_at": datetime.utcnow()
     })
 
@@ -426,7 +427,7 @@ async def cancel_reservation(reservation_id: str, current_user: dict = Depends(v
     })
     # remove reservation from itinerary reservations array
     itinerary_ref = itinerary_doc_ref(data.get("itinerary_id"))
-    itinerary_ref.update({"reservations": db.ArrayRemove([reservation_id]), "updated_at": datetime.utcnow()})
+    itinerary_ref.update({"reservations": get_db().ArrayRemove([reservation_id]), "updated_at": datetime.utcnow()})
     return {"success": True, "message": "Reservation cancelled"}
 
 

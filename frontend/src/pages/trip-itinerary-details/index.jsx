@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import Header from '../../components/ui/Header';
 import AIAssistantSidebar from '../../components/ui/AIAssistantSidebar';
 import NotificationToast from '../../components/ui/NotificationToast';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import ItineraryTimeline from './components/ItineraryTimeline';
@@ -12,175 +13,197 @@ import GroupCollaboration from './components/GroupCollaboration';
 import EmergencyCopilot from './components/EmergencyCopilot';
 import BookingIntegration from './components/BookingIntegration';
 import WeatherIntegration from './components/WeatherIntegration';
+import HiddenGems from './components/HiddenGems';
+import tripService from '../../services/tripService';
+import { mockTrips } from '../../data/mockTrips';
 
 const TripItineraryDetails = () => {
   const navigate = useNavigate();
+  const { tripId } = useParams();
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('itinerary');
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingActivity, setBookingActivity] = useState(null);
+  
+  // Trip data state
+  const [tripData, setTripData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [weatherAlerts, setWeatherAlerts] = useState([]);
 
-  // Mock trip data
-  const tripData = {
-    id: 'trip_001',
-    title: 'Golden Triangle Adventure',
-    destination: 'Delhi - Agra - Jaipur',
-    duration: '7 Days, 6 Nights',
-    startDate: '2025-01-03',
-    endDate: '2025-01-09',
-    travelers: 4,
-    status: 'confirmed',
-    image: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800',
-    days: [
-      {
-        title: 'Arrival in Delhi',
-        date: 'January 3, 2025',
-        totalCost: 8500,
-        activities: [
-          {
-            id: 'act_001',
-            title: 'Airport Transfer',
-            type: 'transport',
-            time: '10:00 AM',
-            duration: '1 hour',
-            cost: 1500,
-            status: 'booked',
-            location: 'Indira Gandhi International Airport',
-            description: 'Private car transfer from airport to hotel',
-            image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=400'
-          },
-          {
-            id: 'act_002',
-            title: 'Hotel Check-in',
-            type: 'hotel',
-            time: '12:00 PM',
-            duration: '30 minutes',
-            cost: 0,
-            status: 'booked',
-            location: 'The Imperial Hotel, New Delhi',
-            description: 'Luxury accommodation in the heart of Delhi',
-            image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400'
-          },
-          {
-            id: 'act_003',
-            title: 'Red Fort Visit',
-            type: 'attraction',
-            time: '3:00 PM',
-            duration: '2 hours',
-            cost: 2000,
-            status: 'pending',
-            location: 'Red Fort, Old Delhi',
-            description: 'Explore the historic Mughal fortress and UNESCO World Heritage site',
-            image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400'
-          },
-          {
-            id: 'act_004',
-            title: 'Dinner at Karim\'s',
-            type: 'restaurant',
-            time: '7:00 PM',
-            duration: '1.5 hours',
-            cost: 3000,
-            status: 'pending',
-            location: 'Karim\'s, Jama Masjid',
-            description: 'Authentic Mughlai cuisine at the legendary restaurant',
-            image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400'
-          }
-        ]
-      },
-      {
-        title: 'Delhi Sightseeing',
-        date: 'January 4, 2025',
-        totalCost: 12000,
-        activities: [
-          {
-            id: 'act_005',
-            title: 'India Gate & Rajpath',
-            type: 'attraction',
-            time: '9:00 AM',
-            duration: '1.5 hours',
-            cost: 500,
-            status: 'pending',
-            location: 'India Gate, New Delhi',
-            description: 'Visit the iconic war memorial and take photos at Rajpath',
-            image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400'
-          },
-          {
-            id: 'act_006',
-            title: 'Lotus Temple',
-            type: 'attraction',
-            time: '11:30 AM',
-            duration: '1 hour',
-            cost: 0,
-            status: 'pending',
-            location: 'Lotus Temple, South Delhi',
-            description: 'Marvel at the architectural beauty of the Bahá\'í House of Worship',
-            image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400'
-          },
-          {
-            id: 'act_007',
-            title: 'Lunch at Connaught Place',
-            type: 'restaurant',
-            time: '1:00 PM',
-            duration: '1 hour',
-            cost: 2500,
-            status: 'pending',
-            location: 'Connaught Place, New Delhi',
-            description: 'Shopping and dining at Delhi\'s commercial hub',
-            image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400'
-          },
-          {
-            id: 'act_008',
-            title: 'Qutub Minar Complex',
-            type: 'attraction',
-            time: '3:30 PM',
-            duration: '2 hours',
-            cost: 1000,
-            status: 'pending',
-            location: 'Qutub Minar, Mehrauli',
-            description: 'Explore the tallest brick minaret in the world',
-            image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400'
-          }
-        ]
+  // Fetch trip data
+  const fetchTripData = async () => {
+    if (!tripId) {
+      setError('No trip ID provided');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // For now, use mock data. In production, use the real API:
+      // const response = await tripService.getTrip(tripId);
+      // if (response.success && response.itinerary) {
+      //   setTripData(response.itinerary);
+      // } else {
+      //   setError('Failed to load trip data');
+      // }
+      
+      // Mock data for testing
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      const mockTrip = mockTrips.find(trip => trip.id === tripId);
+      if (mockTrip) {
+        setTripData(mockTrip);
+      } else {
+        setError('Trip not found');
       }
-    ]
+    } catch (err) {
+      console.error('Error fetching trip:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const budgetData = {
-    totalBudget: 150000,
-    totalSpent: 89500,
-    categories: [
-      { name: 'Accommodation', budget: 45000, spent: 32000 },
-      { name: 'Transportation', budget: 25000, spent: 18500 },
-      { name: 'Food & Dining', budget: 30000, spent: 22000 },
-      { name: 'Activities', budget: 35000, spent: 12000 },
-      { name: 'Shopping', budget: 10000, spent: 3500 },
-      { name: 'Miscellaneous', budget: 5000, spent: 1500 }
+  // Process budget data from trip data
+  const budgetData = tripData ? {
+    totalBudget: tripData.budget?.total || 150000,
+    totalSpent: tripData.budget?.spent || 0,
+    categories: tripData.budget?.categories || [
+      { name: 'Accommodation', budget: 45000, spent: 0 },
+      { name: 'Transportation', budget: 25000, spent: 0 },
+      { name: 'Food & Dining', budget: 30000, spent: 0 },
+      { name: 'Activities', budget: 35000, spent: 0 },
+      { name: 'Shopping', budget: 10000, spent: 0 },
+      { name: 'Miscellaneous', budget: 5000, spent: 0 }
     ]
-  };
+  } : null;
 
-  const allActivities = tripData?.days?.flatMap(day => day?.activities);
+  const allActivities = tripData?.summary?.days?.flatMap(day => day?.activities) || [];
 
   useEffect(() => {
-    // Show welcome toast
-    setTimeout(() => {
+    fetchTripData();
+  }, [tripId]);
+
+  useEffect(() => {
+    // Show welcome toast when trip data is loaded
+    if (tripData && !loading) {
+      setTimeout(() => {
+        if (window.showToast) {
+          window.showToast({
+            type: 'ai',
+            title: 'Trip Assistant Ready',
+            message: `I'm here to help you manage your ${tripData.title || 'trip'}. Need any assistance?`,
+            duration: 5000
+          });
+        }
+      }, 1000);
+    }
+  }, [tripData, loading]);
+
+  // Trip customization functions
+  const handleActivitySwap = async (itemType, itemId, alternativeId, reason) => {
+    try {
+      const action = tripService.createSwapAction(itemType, itemId, alternativeId, reason);
+      const response = await tripService.customizeTrip(tripId, [action]);
+      
+      if (response.success) {
+        // Refresh trip data
+        await fetchTripData();
+        
+        if (window.showToast) {
+          window.showToast({
+            type: 'success',
+            title: 'Activity Swapped',
+            message: 'The activity has been successfully replaced.',
+            duration: 3000
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error swapping activity:', err);
       if (window.showToast) {
         window.showToast({
-          type: 'ai',
-          title: 'Trip Assistant Ready',
-          message: 'I\'m here to help you manage your Golden Triangle adventure. Need any assistance?',
-          duration: 5000
+          type: 'error',
+          title: 'Swap Failed',
+          message: err.message || 'Failed to swap activity. Please try again.',
+          duration: 3000
         });
       }
-    }, 1000);
-  }, []);
+    }
+  };
+
+  const handleActivityAdd = async (itemType, alternativeId, reason) => {
+    try {
+      const action = tripService.createAddAction(itemType, alternativeId, reason);
+      const response = await tripService.customizeTrip(tripId, [action]);
+      
+      if (response.success) {
+        // Refresh trip data
+        await fetchTripData();
+        
+        if (window.showToast) {
+          window.showToast({
+            type: 'success',
+            title: 'Activity Added',
+            message: 'The activity has been successfully added to your itinerary.',
+            duration: 3000
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error adding activity:', err);
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Add Failed',
+          message: err.message || 'Failed to add activity. Please try again.',
+          duration: 3000
+        });
+      }
+    }
+  };
+
+  const handleActivityRemove = async (itemType, itemId, reason) => {
+    try {
+      const action = tripService.createRemoveAction(itemType, itemId, reason);
+      const response = await tripService.customizeTrip(tripId, [action]);
+      
+      if (response.success) {
+        // Refresh trip data
+        await fetchTripData();
+        
+        if (window.showToast) {
+          window.showToast({
+            type: 'success',
+            title: 'Activity Removed',
+            message: 'The activity has been successfully removed from your itinerary.',
+            duration: 3000
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error removing activity:', err);
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Remove Failed',
+          message: err.message || 'Failed to remove activity. Please try again.',
+          duration: 3000
+        });
+      }
+    }
+  };
 
   const handleActivityEdit = (activity) => {
     if (window.showToast) {
       window.showToast({
         type: 'info',
         title: 'Edit Activity',
-        message: `Editing ${activity?.title}. Feature coming soon!`,
+        message: `Editing ${activity?.title}. Use the swap/add/remove options to customize your trip.`,
         duration: 3000
       });
     }
@@ -226,6 +249,18 @@ const TripItineraryDetails = () => {
     console.log('SOS activated');
   };
 
+  const handleWeatherAlert = (alerts) => {
+    setWeatherAlerts(alerts);
+    if (alerts.length > 0 && window.showToast) {
+      window.showToast({
+        type: 'warning',
+        title: 'Weather Alert',
+        message: `${alerts.length} weather alert(s) for your trip. Check the Weather tab for details.`,
+        duration: 5000
+      });
+    }
+  };
+
   const handleAddExpense = () => {
     if (window.showToast) {
       window.showToast({
@@ -263,10 +298,95 @@ const TripItineraryDetails = () => {
     { id: 'itinerary', label: 'Itinerary', icon: 'Calendar', count: allActivities?.length },
     { id: 'budget', label: 'Budget', icon: 'PiggyBank', count: null },
     { id: 'map', label: 'Map', icon: 'Map', count: null },
+    { id: 'gems', label: 'Hidden Gems', icon: 'Compass', count: null },
     { id: 'group', label: 'Group', icon: 'Users', count: 4 },
-    { id: 'weather', label: 'Weather', icon: 'CloudSun', count: null },
+    { id: 'weather', label: 'Weather', icon: 'CloudSun', count: weatherAlerts.length > 0 ? weatherAlerts.length : null },
     { id: 'emergency', label: 'Emergency', icon: 'Shield', count: null }
   ];
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <NotificationToast />
+        <div className="pt-16">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="flex items-center justify-center py-20">
+              <LoadingSpinner size="lg" />
+              <span className="ml-3 text-muted-foreground font-caption">Loading trip details...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <NotificationToast />
+        <div className="pt-16">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="glass glass-hover rounded-2xl p-8 text-center">
+              <Icon name="AlertTriangle" size={48} className="text-error mx-auto mb-4" />
+              <h2 className="text-xl font-heading font-heading-semibold text-foreground mb-2">
+                Unable to Load Trip
+              </h2>
+              <p className="text-muted-foreground font-caption mb-6">
+                {error}
+              </p>
+              <div className="flex justify-center space-x-3">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/trip-planning-wizard')}
+                >
+                  Back to Planning
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={fetchTripData}
+                >
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show no data state
+  if (!tripData) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <NotificationToast />
+        <div className="pt-16">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="glass glass-hover rounded-2xl p-8 text-center">
+              <Icon name="MapPin" size={48} className="text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-xl font-heading font-heading-semibold text-foreground mb-2">
+                Trip Not Found
+              </h2>
+              <p className="text-muted-foreground font-caption mb-6">
+                The requested trip could not be found or you don't have permission to view it.
+              </p>
+              <Button
+                variant="default"
+                onClick={() => navigate('/trip-planning-wizard')}
+              >
+                Plan New Trip
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -288,10 +408,10 @@ const TripItineraryDetails = () => {
                   </button>
                   <div>
                     <h1 className="text-2xl font-heading font-heading-bold text-foreground">
-                      {tripData?.title}
+                      {tripData?.title || 'Untitled Trip'}
                     </h1>
                     <p className="text-muted-foreground font-caption">
-                      {tripData?.destination} • {tripData?.duration}
+                      {tripData?.destination || tripData?.summary?.destination || 'Destination'} • {tripData?.duration || 'Duration'}
                     </p>
                   </div>
                 </div>
@@ -300,16 +420,20 @@ const TripItineraryDetails = () => {
                   <div className="flex items-center space-x-2">
                     <Icon name="Calendar" size={16} />
                     <span className="font-caption">
-                      {new Date(tripData.startDate)?.toLocaleDateString('en-GB')} - {new Date(tripData.endDate)?.toLocaleDateString('en-GB')}
+                      {tripData?.start_date ? new Date(tripData.start_date).toLocaleDateString('en-GB') : 'Start Date'} - {tripData?.end_date ? new Date(tripData.end_date).toLocaleDateString('en-GB') : 'End Date'}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Icon name="Users" size={16} />
-                    <span className="font-caption">{tripData?.travelers} travelers</span>
+                    <span className="font-caption">{tripData?.travelers || tripData?.traveler_count || 1} travelers</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 rounded-full bg-success" />
-                    <span className="font-caption capitalize">{tripData?.status}</span>
+                    <div className={`w-2 h-2 rounded-full ${
+                      tripData?.status === 'confirmed' ? 'bg-success' :
+                      tripData?.status === 'pending' ? 'bg-warning' :
+                      tripData?.status === 'cancelled' ? 'bg-error' : 'bg-muted'
+                    }`} />
+                    <span className="font-caption capitalize">{tripData?.status || 'unknown'}</span>
                   </div>
                 </div>
               </div>
@@ -375,6 +499,9 @@ const TripItineraryDetails = () => {
                   itinerary={tripData}
                   onActivityEdit={handleActivityEdit}
                   onBookingClick={handleBookingClick}
+                  onActivitySwap={handleActivitySwap}
+                  onActivityAdd={handleActivityAdd}
+                  onActivityRemove={handleActivityRemove}
                 />
               )}
               
@@ -393,6 +520,22 @@ const TripItineraryDetails = () => {
                 />
               )}
               
+              {activeTab === 'gems' && (
+                <HiddenGems
+                  tripId={tripId}
+                  onGemSelect={(gem) => {
+                    if (window.showToast) {
+                      window.showToast({
+                        type: 'info',
+                        title: 'Hidden Gem Selected',
+                        message: `You selected ${gem.name}. This feature will be enhanced soon!`,
+                        duration: 3000
+                      });
+                    }
+                  }}
+                />
+              )}
+              
               {activeTab === 'group' && (
                 <GroupCollaboration
                   tripId={tripData?.id}
@@ -403,8 +546,9 @@ const TripItineraryDetails = () => {
               
               {activeTab === 'weather' && (
                 <WeatherIntegration
-                  location={tripData?.destination}
-                  onWeatherAlert={(alert) => console.log('Weather alert:', alert)}
+                  tripId={tripId}
+                  location={tripData?.destination || tripData?.summary?.destination}
+                  onWeatherAlert={handleWeatherAlert}
                 />
               )}
               
@@ -502,6 +646,7 @@ const TripItineraryDetails = () => {
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <BookingIntegration
               activity={bookingActivity}
+              tripId={tripId}
               onBookingComplete={handleBookingComplete}
               onBookingCancel={handleBookingCancel}
             />

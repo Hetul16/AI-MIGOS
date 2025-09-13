@@ -238,13 +238,19 @@ class AuthService {
   async syncGoogleAuthWithBackend(user) {
     try {
       const token = await user.getIdToken();
-      await fetch(`${API_BASE_URL}/auth/google`, {
+      const response = await fetch(`${API_BASE_URL}/auth/google`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ id_token: token })
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`HTTP ${response.status}: ${errorData.detail || 'Unknown error'}`);
+      }
+      
       console.log('✅ Google auth synced with backend');
     } catch (error) {
       console.warn('⚠️ Backend Google auth sync failed (non-critical):', error);

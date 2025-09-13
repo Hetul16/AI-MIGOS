@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Image from '../../../components/AppImage';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import tripService from '../../../services/tripService';
 
-const BookingIntegration = ({ activity, onBookingComplete, onBookingCancel }) => {
+const BookingIntegration = ({ activity, tripId, onBookingComplete, onBookingCancel }) => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('razorpay');
   const [bookingStep, setBookingStep] = useState('details'); // 'details' | 'payment' | 'confirmation'
   const [bookingDetails, setBookingDetails] = useState({
@@ -12,6 +14,8 @@ const BookingIntegration = ({ activity, onBookingComplete, onBookingCancel }) =>
     time: '10:00',
     specialRequests: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [reservation, setReservation] = useState(null);
 
   const paymentMethods = [
     {
@@ -66,32 +70,73 @@ const BookingIntegration = ({ activity, onBookingComplete, onBookingCancel }) =>
 
   const [selectedOption, setSelectedOption] = useState('premium');
 
-  const handleBookingSubmit = () => {
+  const handleBookingSubmit = async () => {
     if (bookingStep === 'details') {
       setBookingStep('payment');
     } else if (bookingStep === 'payment') {
-      setBookingStep('confirmation');
-      
-      // Simulate payment processing
-      setTimeout(() => {
-        onBookingComplete({
-          ...activity,
-          bookingId: `BK${Date.now()}`,
-          status: 'booked',
-          paymentMethod: selectedPaymentMethod,
-          bookingDetails,
-          selectedOption
-        });
-        
+      if (!tripId || !activity?.id) {
+        console.error('Missing tripId or activity ID');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Create reservation item
+        const reservationItem = tripService.createReservationItem(
+          activity.type || 'activity',
+          activity.id,
+          activity.cost || activity.price || 0,
+          'INR'
+        );
+
+        // Create reservation
+        const response = await tripService.reserveItems(
+          tripId,
+          [reservationItem],
+          30, // 30 minutes hold
+          `booking_${activity.id}_${Date.now()}`
+        );
+
+        if (response.success) {
+          setReservation(response);
+          setBookingStep('confirmation');
+          
+          // Complete booking after a short delay
+          setTimeout(() => {
+            onBookingComplete({
+              ...activity,
+              bookingId: response.reservation_id,
+              status: 'booked',
+              paymentMethod: selectedPaymentMethod,
+              bookingDetails,
+              selectedOption,
+              totalAmount: response.total_amount,
+              expiresAt: response.expires_at
+            });
+            
+            if (window.showToast) {
+              window.showToast({
+                type: 'success',
+                title: 'Booking Confirmed!',
+                message: 'Your booking has been confirmed. Check your email for details.',
+                duration: 5000
+              });
+            }
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Booking error:', err);
         if (window.showToast) {
           window.showToast({
-            type: 'success',
-            title: 'Booking Confirmed!',
-            message: 'Your booking has been confirmed. Check your email for details.',
+            type: 'error',
+            title: 'Booking Failed',
+            message: err.message || 'Failed to create reservation. Please try again.',
             duration: 5000
           });
         }
-      }, 2000);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
