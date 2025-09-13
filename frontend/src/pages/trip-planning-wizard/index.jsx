@@ -7,7 +7,7 @@ import NotificationToast, { showSuccessToast, showAIToast } from '../../componen
 import DestinationSelector from './components/DestinationSelector';
 import DateSelector from './components/DateSelector';
 import BudgetSelector from './components/BudgetSelector';
-import PreferencesSelector from './components/PreferencesSelector';
+import PreferencesSelector from './components/PreferencesSelector'  ;
 import ItineraryPreview from './components/ItineraryPreview';
 import Icon from '../../components/AppIcon';
 
