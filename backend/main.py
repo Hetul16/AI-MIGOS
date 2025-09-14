@@ -6,6 +6,12 @@ import uvicorn
 from api.authentication import router as auth_router
 from api.trips import router as trips_router
 from api.payments import router as payments_router
+from api.reservations import router as reservations_router
+from api.group_members import router as group_members_router
+from api.comments import router as comments_router
+from api.votes import router as votes_router
+from api.hidden_gems import router as hidden_gems_router
+from api.weather_alerts import router as weather_alerts_router # New import
 from core.firebase import init_firebase
 
 # Initialize Firebase
@@ -36,6 +42,12 @@ async def add_security_headers(request, call_next):
 app.include_router(auth_router, prefix="/api", tags=["Authentication & User"])
 app.include_router(trips_router, tags=["Trips"]) # Removed prefix="/api"
 app.include_router(payments_router, tags=["Payments & Booking"]) # Removed prefix="/api"
+app.include_router(reservations_router, tags=["Reservations"]) # New router inclusion
+app.include_router(group_members_router, tags=["Group Collaboration"]) # New router inclusion
+app.include_router(comments_router, tags=["Comments"]) # New router inclusion
+app.include_router(votes_router, tags=["Votes"]) # New router inclusion
+app.include_router(hidden_gems_router, tags=["Hidden Gems"]) # New router inclusion
+app.include_router(weather_alerts_router, tags=["Weather Alerts"]) # New router inclusion
 
 @app.get("/")
 def root():

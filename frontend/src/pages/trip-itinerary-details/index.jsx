@@ -15,6 +15,13 @@ import BookingIntegration from './components/BookingIntegration';
 import WeatherIntegration from './components/WeatherIntegration';
 import HiddenGems from './components/HiddenGems';
 import tripService from '../../services/tripService';
+import { createReservation } from '../../services/reservationService';
+import { getItineraryGroupMembers } from '../../services/groupMemberService';
+import { getItineraryComments } from '../../services/commentService';
+import { getItineraryVotes } from '../../services/voteService';
+import { getAllHiddenGems } from '../../services/hiddenGemService';
+import { getItineraryWeatherAlerts } from '../../services/weatherAlertService';
+import { createBooking } from '../../services/bookingService'; // Import booking service
 import { mockTrips } from '../../data/mockTrips';
 
 const TripItineraryDetails = () => {
@@ -25,12 +32,18 @@ const TripItineraryDetails = () => {
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingActivity, setBookingActivity] = useState(null);
+  const [isTripConfirmed, setIsTripConfirmed] = useState(false); // New state for trip confirmation
   
   // Trip data state
   const [tripData, setTripData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [weatherAlerts, setWeatherAlerts] = useState([]);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [votes, setVotes] = useState([]);
+  const [hiddenGems, setHiddenGems] = useState([]);
+  const [fetchedWeatherAlerts, setFetchedWeatherAlerts] = useState([]); // New state for fetched weather alerts
 
   // Fetch trip data
   const fetchTripData = async () => {
@@ -86,6 +99,72 @@ const TripItineraryDetails = () => {
 
   useEffect(() => {
     fetchTripData();
+  }, [tripId]);
+
+  useEffect(() => {
+    const fetchGroupMembers = async () => {
+      if (!tripId) return;
+      try {
+        const members = await getItineraryGroupMembers(tripId);
+        setGroupMembers(members);
+      } catch (err) {
+        console.error('Error fetching group members:', err);
+        // Optionally set an error state for group members specifically
+      }
+    };
+    fetchGroupMembers();
+  }, [tripId]);
+
+  useEffect(() => {
+    const fetchComments = async () => {
+      if (!tripId) return;
+      try {
+        const fetchedComments = await getItineraryComments(tripId);
+        setComments(fetchedComments);
+      } catch (err) {
+        console.error('Error fetching comments:', err);
+      }
+    };
+    fetchComments();
+  }, [tripId]);
+
+  useEffect(() => {
+    const fetchVotes = async () => {
+      if (!tripId) return;
+      try {
+        const fetchedVotes = await getItineraryVotes(tripId);
+        setVotes(fetchedVotes);
+      } catch (err) {
+        console.error('Error fetching votes:', err);
+      }
+    };
+    fetchVotes();
+  }, [tripId]);
+
+  useEffect(() => {
+    const fetchHiddenGems = async () => {
+      if (!tripId) return;
+      try {
+        const fetchedGems = await getAllHiddenGems(tripId);
+        setHiddenGems(fetchedGems);
+      } catch (err) {
+        console.error('Error fetching hidden gems:', err);
+      }
+    };
+    fetchHiddenGems();
+  }, [tripId]);
+
+  useEffect(() => {
+    const fetchWeatherAlerts = async () => {
+      if (!tripId) return;
+      try {
+        const alerts = await getItineraryWeatherAlerts(tripId);
+        setFetchedWeatherAlerts(alerts);
+      } catch (err) {
+        console.error('Error fetching weather alerts:', err);
+      }
+    };
+    fetchWeatherAlerts();
   }, [tripId]);
 
   useEffect(() => {
@@ -214,17 +293,106 @@ const TripItineraryDetails = () => {
     setShowBookingModal(true);
   };
 
-  const handleBookingComplete = (bookingData) => {
-    setShowBookingModal(false);
-    setBookingActivity(null);
-    
-    if (window.showToast) {
-      window.showToast({
-        type: 'success',
-        title: 'Booking Confirmed!',
-        message: `${bookingData?.title} has been successfully booked.`,
-        duration: 5000
-      });
+  const handleConfirmTripBooking = async () => {
+    // This is where the logic to store the trip booking in the database would go.
+    // For now, we'll simulate success and then navigate to the payments page.
+    setLoading(true);
+    setError(null);
+    try {
+      // Create a reservation object based on tripData
+      const reservationData = {
+        itinerary_id: tripId,
+        service_type: 'trip_package', // Or more specific types like 'hotel', 'flight'
+        service_details: {
+          title: tripData.title,
+          destination: tripData.destination,
+          start_date: tripData.start_date,
+          end_date: tripData.end_date,
+          traveler_count: tripData.traveler_count,
+          // Add other relevant trip details
+        },
+        amount: tripData.budget?.total || 0, // Use total budget as reservation amount
+        currency: tripData.budget?.currency || 'INR',
+      };
+
+      const response = await createReservation(reservationData);
+      
+      if (response.success && response.reservation_id) {
+        setIsTripConfirmed(true); // Mark as confirmed on the frontend
+        
+        if (window.showToast) {
+          window.showToast({
+            type: 'success',
+            title: 'Trip Confirmed!',
+            message: 'Your trip details have been saved. Proceed to payment.',
+            duration: 5000
+          });
+        }
+        // Redirect to a payment initiation page or modal, passing reservation_id
+        navigate(`/my-payments?reservationId=${response.reservation_id}&tripId=${tripId}&status=pending_payment`);
+      } else {
+        throw new Error(response.detail || 'Failed to create reservation.');
+      }
+    } catch (err) {
+      console.error('Error confirming trip booking:', err);
+      setError(err.message || 'Failed to confirm trip booking. Please try again.');
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Confirmation Failed',
+          message: err.message || 'Failed to confirm trip booking. Please try again.',
+          duration: 3000
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBookingComplete = async (reservationId, paymentId, bookingDetails) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const bookingData = {
+        itinerary_id: tripId,
+        reservation_id: reservationId,
+        payment_id: paymentId,
+        service_type: bookingDetails.service_type,
+        service_details: bookingDetails.service_details,
+        provider_refs: bookingDetails.provider_refs || [],
+      };
+      const response = await createBooking(bookingData);
+
+      if (response.success && response.booking_id) {
+        setShowBookingModal(false);
+        setBookingActivity(null);
+        
+        if (window.showToast) {
+          window.showToast({
+            type: 'success',
+            title: 'Booking Confirmed!',
+            message: `Your booking (ID: ${response.booking_id}) has been successfully confirmed.`,
+            duration: 5000
+          });
+        }
+        // Refresh trip data to reflect new booking status
+        fetchTripData();
+      } else {
+        throw new Error(response.detail || 'Failed to create booking.');
+      }
+    } catch (err) {
+      console.error('Error completing booking:', err);
+      setError(err.message || 'Failed to finalize booking. Please try again.');
+      if (window.showToast) {
+        window.showToast({
+          type: 'error',
+          title: 'Booking Failed',
+          message: err.message || 'Failed to finalize booking. Please try again.',
+          duration: 3000
+        });
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -299,7 +467,7 @@ const TripItineraryDetails = () => {
     { id: 'budget', label: 'Budget', icon: 'PiggyBank', count: null },
     { id: 'map', label: 'Map', icon: 'Map', count: null },
     { id: 'gems', label: 'Hidden Gems', icon: 'Compass', count: null },
-    { id: 'group', label: 'Group', icon: 'Users', count: 4 },
+    { id: 'group', label: 'Group', icon: 'Users', count: groupMembers.length }, // Update count to actual group members
     { id: 'weather', label: 'Weather', icon: 'CloudSun', count: weatherAlerts.length > 0 ? weatherAlerts.length : null },
     { id: 'emergency', label: 'Emergency', icon: 'Shield', count: null }
   ];
@@ -523,6 +691,7 @@ const TripItineraryDetails = () => {
               {activeTab === 'gems' && (
                 <HiddenGems
                   tripId={tripId}
+                  hiddenGems={hiddenGems} // Pass hidden gems to component
                   onGemSelect={(gem) => {
                     if (window.showToast) {
                       window.showToast({
@@ -539,6 +708,9 @@ const TripItineraryDetails = () => {
               {activeTab === 'group' && (
                 <GroupCollaboration
                   tripId={tripData?.id}
+                  groupMembers={groupMembers}
+                  comments={comments}
+                  votes={votes} // Pass votes to component
                   onVoteSubmit={handleVoteSubmit}
                   onCommentAdd={handleCommentAdd}
                 />
@@ -548,6 +720,7 @@ const TripItineraryDetails = () => {
                 <WeatherIntegration
                   tripId={tripId}
                   location={tripData?.destination || tripData?.summary?.destination}
+                  weatherAlerts={fetchedWeatherAlerts} // Pass fetched weather alerts to component
                   onWeatherAlert={handleWeatherAlert}
                 />
               )}
@@ -649,6 +822,8 @@ const TripItineraryDetails = () => {
               tripId={tripId}
               onBookingComplete={handleBookingComplete}
               onBookingCancel={handleBookingCancel}
+              // Pass reservationId and paymentId if they are available from a previous step
+              // For now, assume BookingIntegration handles its own payment initiation
             />
           </div>
         </div>
@@ -659,6 +834,27 @@ const TripItineraryDetails = () => {
         onToggle={() => setIsAIAssistantOpen(!isAIAssistantOpen)}
         contextData={tripData}
       />
+
+      {/* Trip Confirmation Block */}
+      {!isTripConfirmed && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-glass border-t border-border/50 p-4 shadow-prominent">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-heading font-heading-semibold text-foreground">Confirm Your Trip Booking</h3>
+              <p className="text-sm text-muted-foreground font-caption">Review your itinerary and confirm to proceed with payment.</p>
+            </div>
+            <Button
+              variant="default"
+              size="lg"
+              onClick={handleConfirmTripBooking}
+              disabled={loading}
+              className="bg-gradient-intelligent"
+            >
+              {loading ? <LoadingSpinner size="sm" /> : 'Confirm Trip & Proceed to Payment'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

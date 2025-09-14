@@ -39,6 +39,20 @@ class CheckoutRequest(BaseModel):
     amount: float
     currency: str = "INR"
 
+class PaymentCreateRequest(BaseModel):
+    reservation_id: str
+    amount: float
+    currency: str = "INR"
+    payment_method: Optional[str] = None # e.g., 'card', 'google_pay'
+
+class BookingCreateRequest(BaseModel):
+    itinerary_id: str
+    reservation_id: str
+    payment_id: str
+    service_type: str # e.g., 'flight', 'hotel', 'activity', 'package'
+    service_details: dict # Confirmed details of the booked service
+    provider_refs: Optional[list[str]] = [] # External booking/confirmation IDs
+
 
 # ------------------------
 # Endpoints
@@ -142,14 +156,14 @@ def mark_payment_failed(intent_id: str):
         logger.exception("mark_payment_failed failed")
 
 
-@router.post("/trips/{itinerary_id}/book")
-async def finalize_booking(itinerary_id: str, reservation_id: str, payment_id: str, current_user: dict = Depends(verify_firebase_token)):
+@router.post("/bookings")
+async def create_booking(body: BookingCreateRequest, current_user: dict = Depends(verify_firebase_token)):
     """
-    Finalize booking after successful payment.
+    Create a booking after successful payment.
     """
     uid = current_user["uid"]
-    res_doc = reservations_col().document(reservation_id).get()
-    pay_doc = payments_col().document(payment_id).get()
+    res_doc = reservations_col().document(body.reservation_id).get()
+    pay_doc = payments_col().document(body.payment_id).get()
 
     if not res_doc.exists or not pay_doc.exists:
         raise HTTPException(status_code=404, detail="Reservation or Payment not found")
@@ -165,18 +179,23 @@ async def finalize_booking(itinerary_id: str, reservation_id: str, payment_id: s
     booking_id = f"bk_{uuid4().hex[:12]}"
     booking_doc = {
         "id": booking_id,
-        "itinerary_id": itinerary_id,
-        "reservation_id": reservation_id,
-        "payment_id": payment_id,
+        "itinerary_id": body.itinerary_id,
+        "reservation_id": body.reservation_id,
+        "payment_id": body.payment_id,
         "user_id": uid,
+        "service_type": body.service_type,
+        "service_details": body.service_details,
+        "provider_refs": body.provider_refs,
+        "amount": pay["amount"], # Take amount from payment
+        "currency": pay["currency"], # Take currency from payment
         "status": "confirmed",
-        "provider_refs": [],  # in real integration, fill with provider booking IDs
         "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
     }
     bookings_col().document(booking_id).set(booking_doc)
     # update reservation & itinerary
-    reservations_col().document(reservation_id).update({"status": "booked"})
-    db.collection("itineraries").document(itinerary_id).update({"status": "booked"})
+    reservations_col().document(body.reservation_id).update({"status": "booked", "updated_at": datetime.utcnow()})
+    db.collection("itineraries").document(body.itinerary_id).update({"status": "booked", "updated_at": datetime.utcnow()})
 
     return {"success": True, "booking_id": booking_id, "status": "confirmed"}
 
@@ -191,6 +210,18 @@ async def get_booking(booking_id: str, current_user: dict = Depends(verify_fireb
     if b["user_id"] != uid:
         raise HTTPException(status_code=403, detail="Forbidden")
     return {"success": True, "booking": b}
+
+@router.get("/payments")
+async def get_all_payments(current_user: dict = Depends(verify_firebase_token)):
+    """
+    Retrieve all payments for the current user.
+    """
+    uid = current_user["uid"]
+    payments = []
+    query = payments_col().where("user_id", "==", uid).order_by("created_at", direction="DESCENDING").stream()
+    for doc in query:
+        payments.append(doc.to_dict())
+    return {"success": True, "payments": payments}
 
 
 @router.post("/bookings/{booking_id}/cancel")
