@@ -1,0 +1,1288 @@
+1) agent.json: {
+  "name": "recommendation_agent",
+  "displayName": "App Modernization Recommendation Agent",
+  "description": "Specialized agent for analyzing client contexts and providing strategic app modernization recommendations. Evaluates technical landscape, business objectives, and constraints to deliver comprehensive modernization strategies.",
+  "version": "1.0.0",
+  "url": "http://localhost:8100/a2a/recommendation_agent",
+  "authentication": { "type": "none" },
+  "capabilities": {
+    "streaming": true,
+    "functions": true
+  },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "type": "Agent",
+  "tools": [
+    {
+      "name": "modernization",
+      "description": "Analyzes client context and provides app modernization recommendations",
+      "inputs": {
+        "client_context": "Dictionary containing client background information",
+        "app_landscape": "List of dictionaries containing application details",
+        "objectives": "List of modernization objectives",
+        "constraints": "List of project constraints",
+        "assumptions": "List of assumptions made"
+      },
+      "outputs": {
+        "client_discovery_notes": "Key drivers, pain points, and opportunities",
+        "application_inventory": "Function, tech stack, complexity, criticality",
+        "modernization_approach": "Migration strategy per application",
+        "value_proposition": "Cost, agility, scalability benefits",
+        "roadmap": "Phased implementation plan",
+        "tooling": "Cloud, migration, CI/CD recommendations",
+        "risks": "Technical, business, resource risks",
+        "effort_sizing": "T-shirt size estimates"
+      }
+    }
+  ],
+  "skills": [
+    {
+      "id": "modernization_analysis",
+      "name": "App Modernization Analysis",
+      "description": "Analyzes application portfolios and provides strategic modernization recommendations",
+      "tags": ["modernization", "strategy", "analysis", "recommendations"],
+      "examples": [
+        "Analyze our Java application portfolio for cloud migration",
+        "Recommend modernization strategy for legacy systems",
+        "Evaluate application landscape for containerization",
+        "Provide modernization roadmap for monolithic applications"
+      ]
+    }
+  ]
+}2) agent.py: """
+Implementation of the App Modernization Recommendation Agent.
+"""
+from __future__ import annotations
+
+import sys
+import os
+from pathlib import Path
+
+# Add the parent directory to the path to support both direct execution and A2A server loading
+current_dir = Path(__file__).parent
+root_dir = current_dir.parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
+# Load environment variables from project root without overriding existing env vars
+try:
+    from dotenv import load_dotenv
+    # Resolve to repository root: .../appevolve/recommendation_agent/agent.py -> parents[2]
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    ENV_DEV_PATH = PROJECT_ROOT / "env.dev"
+    ENV_PATH = PROJECT_ROOT / ".env"
+    AGENTS_ENV_PATH = Path(__file__).resolve().parents[1] / "agents.env"  # Sub-agent specific env
+    
+    # Load sub-agent specific environment first
+    if AGENTS_ENV_PATH.exists():
+        load_dotenv(dotenv_path=AGENTS_ENV_PATH, override=False)
+        print(f"Loaded sub-agent env from {AGENTS_ENV_PATH}")
+    
+    # Then load project-wide environment (without overriding sub-agent settings)
+    if ENV_DEV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_DEV_PATH, override=False)
+    elif ENV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_PATH, override=False)
+except Exception as e:
+    print(f"Could not load env files: {e}")
+
+from google.adk import Agent
+from google.genai import types
+
+# Try relative import first, fall back to absolute import
+try:
+    from .server import analyze_modernization_context
+    from .prompt import SYSTEM_PROMPT
+except ImportError:
+    # Fallback for A2A server loading
+    from appevolve.recommendation_agent.server import analyze_modernization_context
+    from appevolve.recommendation_agent.prompt import SYSTEM_PROMPT
+
+
+# Use ADK native model selection
+import os
+from google.adk.models.lite_llm import LiteLlm
+
+# Import logging system
+try:
+    from ..core.logging import log_model_usage
+except ImportError:
+    from appevolve.core.logging import log_model_usage
+
+# Import RAG integration
+try:
+    from ..rag.rag_integration import create_rag_toolset
+except ImportError:
+    from appevolve.rag.rag_integration import create_rag_toolset
+
+# Determine model based on environment variables
+llm_model = os.getenv("LLM_MODEL") or os.getenv("HOST_AGENT_MODEL") or os.getenv("ADK_RUNTIME_MODEL", "gemini-2.0-flash")
+backend = os.getenv("ADK_AGENT_BACKEND", "gemini")
+
+if backend == "litellm":
+    # Use ADK's native LiteLlm wrapper for non-Google models
+    agent_model = LiteLlm(model=llm_model)
+else:
+    # Use native ADK model name for Google models
+    agent_model = llm_model
+
+# Log model usage for recommendation agent
+model_name = str(agent_model)
+# Determine provider based on model name
+if "anthropic.claude" in model_name or model_name.startswith("us.anthropic.") or model_name.startswith("eu.anthropic.") or model_name.startswith("ap.anthropic.") or model_name.startswith("global.anthropic."):
+    provider = "bedrock"
+elif model_name.startswith("gemini"):
+    provider = "google"
+elif model_name.startswith(("gpt", "o1")):
+    provider = "openai"
+elif model_name.startswith("claude"):
+    provider = "anthropic"
+elif model_name.startswith("grok"):
+    provider = "grok"
+else:
+    provider = "unknown"
+
+log_model_usage(
+    agent_name="recommendation_agent",
+    model=model_name,
+    provider=provider,
+    success=True
+)
+
+# Initialize RAG MCP toolset
+rag_toolset = create_rag_toolset()
+
+recommendation_agent = Agent(
+    name="recommendation_agent",
+    model=agent_model,
+    description="Specialized agent for analyzing and recommending app modernization strategies.",
+    instruction=SYSTEM_PROMPT,
+    tools=[analyze_modernization_context] + ([rag_toolset] if rag_toolset else []),
+    generate_content_config=types.GenerateContentConfig(
+        safety_settings=[
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.OFF,
+            ),
+        ]
+    ),
+)
+
+# Export as root_agent for A2A server discovery
+root_agent = recommendation_agent 3) prompt.py: """
+System prompt for the App Modernization Recommendation Agent.
+"""
+
+RECOMMENDATION_AGENT_PROMPT = """Recommendation Agent Prompt
+
+Role: You are a Senior Solution Architect specializing in application modernization. Generate comprehensive, technically sound modernization recommendations using systematic analysis.
+
+Analysis Framework - Use Chain-of-Thought Reasoning:
+
+Step 1: Current State Assessment
+ANALYZE CURRENT STATE:
+• What are the key applications and their functions?
+• What technology stack is currently used?
+• What are the main architectural patterns?
+• What are the performance characteristics?
+• What are the primary pain points and limitations?
+• What are the security and compliance considerations?
+
+Step 2: Gap Analysis
+IDENTIFY GAPS:
+• Where does current state fall short of requirements?
+• What modern capabilities are missing?
+• What technical debt exists?
+• What scalability or performance issues exist?
+• What operational inefficiencies need addressing?
+
+Step 3: Modernization Strategy Selection
+DETERMINE APPROACH per application/component:
+• REHOST (Lift & Shift): Minimal changes, cloud migration
+• REPLATFORM (Lift & Reshape): Platform updates, managed services
+• REFACTOR (Re-architect): Code changes for cloud-native benefits
+• REBUILD (Re-engineer): Rebuild with new architecture
+• REPLACE: Replace with SaaS or COTS solutions
+
+JUSTIFICATION: Map each choice to business drivers and technical requirements
+
+Step 4: Technology Stack Selection
+SELECT TARGET TECHNOLOGIES:
+• Frontend: [Framework selection with justification]
+• Backend: [Platform and services selection]
+• Database: [Data storage solutions]
+• Integration: [API management, messaging]
+• Security: [Identity, encryption, compliance]
+• DevOps: [CI/CD, monitoring, deployment]
+• Infrastructure: [Compute, networking, storage]
+
+RATIONALE: Align selections with NFRs and business preferences
+
+Step 5: Architecture Design
+Create detailed target state architecture covering:
+• Application components and their relationships
+• Data flow and integration patterns
+• Security boundaries and access controls
+• Scalability and availability mechanisms
+• Deployment and operational model
+
+Required Deliverables Format:
+
+1. Executive Summary
+• Modernization objectives and business drivers
+• Recommended approach and key benefits
+• Investment summary and timeline
+
+2. Current State Analysis
+• Application portfolio inventory with:
+• Function and business criticality
+• Technology stack and architecture
+• Performance characteristics
+• Integration dependencies
+• Identified challenges and limitations
+
+3. Modernization Strategy
+• Per-application modernization approach (Rehost/Replatform/Refactor/Rebuild/Replace)
+• Rationale for each approach based on complexity, business value, and technical considerations
+• Migration sequence and dependencies
+
+4. Target State Architecture
+• Detailed architecture description
+• Technology stack recommendations with justifications
+• Mermaid Architecture Diagram (mandatory - use proper Mermaid syntax)
+• Security and compliance architecture
+• Integration patterns and API strategy
+
+5. Implementation Roadmap
+• Phased implementation approach
+• Timeline and milestones
+• Risk mitigation strategies
+• Resource requirements
+
+6. Value Proposition
+• Expected benefits and ROI
+• Performance improvements
+• Operational efficiencies
+• Strategic advantages
+
+7. **Need more details for better recommendation**
+• Identify specific information gaps that would enhance the recommendation quality
+• Highlight missing technical details that could impact architecture decisions
+• Point out unclear business requirements that need clarification
+• Suggest additional assessments or discovery sessions needed
+• Recommend specific stakeholders to engage for missing information
+• Identify areas where assumptions were made due to insufficient data
+• Propose targeted questions to gather critical missing details for optimal solution design
+
+**Architecture Diagram Requirements:**
+• Use Mermaid syntax for all diagrams
+• Include all major components (UI, APIs, databases, external systems)
+• Show data flows and integration points
+• Indicate security boundaries
+• Label with specific Cloud services or chosen technology stack
+
+**Quality Standards:**
+• Base recommendations on industry best practices
+• Ensure all NFRs are addressed with specific solutions
+• Provide cost-conscious recommendations
+• Include risk assessment for major decisions
+• Make assumptions explicit where information is missing
+"""
+
+# Alias required by ADK loader
+SYSTEM_PROMPT = RECOMMENDATION_AGENT_PROMPT 4) server.py (rag example): """
+RAG MCP Server Implementation
+
+This module implements a RAG (Retrieval-Augmented Generation) tool as an MCP server
+that can be accessed globally across all agents in the framework.
+"""
+
+import os
+import uuid
+import base64
+import sqlite3
+import json
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+from pathlib import Path
+
+# FastMCP imports
+from fastmcp import FastMCP
+
+# Core libraries for document processing
+from unstructured.partition.pdf import partition_pdf
+
+# LangChain components
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.messages import HumanMessage
+from langchain.embeddings.base import Embeddings
+from langchain.storage import InMemoryStore
+from langchain.schema.document import Document
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+
+# Vector store and embeddings
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
+from langchain_qdrant import QdrantVectorStore
+from sentence_transformers import SentenceTransformer
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Initialize FastMCP server
+mcp = FastMCP("RAG Tool Server")
+
+# Environment variables
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2")
+QDRANT_URL = os.getenv("QDRANT_URL", "https://2b1be7e9-4b3a-4300-8c8a-a8cdd600ef6d.eu-west-2-0.aws.cloud.qdrant.io")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.FUjyw4PRQg3cMkjBQ70xJFKMLbIRjZR0TphEDuQF-zo")
+
+# ============================================================================
+# COLLECTIONS DATABASE SETUP
+# ============================================================================
+
+class CollectionsDB:
+    def __init__(self, db_path: str = "collections.db"):
+        self.db_path = db_path
+        self.init_db()
+    
+    def init_db(self):
+        """Initialize the database with collections table"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS collections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT DEFAULT '',
+                category TEXT DEFAULT 'General',
+                author TEXT DEFAULT 'Admin User',
+                document_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                tags TEXT DEFAULT '[]',
+                status TEXT DEFAULT 'published'
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def create_collection(self, name: str, description: str = "", category: str = "General", 
+                         author: str = "Admin User", document_count: int = 0, tags: List[str] = None) -> Dict:
+        """Create a new collection record"""
+        if tags is None:
+            tags = []
+            
+        now = datetime.now().isoformat()
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO collections (name, description, category, author, document_count, 
+                                       created_at, updated_at, tags, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (name, description, category, author, document_count, now, now, json.dumps(tags), 'published'))
+            
+            collection_id = cursor.lastrowid
+            conn.commit()
+            
+            return {
+                "id": str(collection_id),
+                "name": name,
+                "description": description,
+                "category": category,
+                "author": author,
+                "document_count": document_count,
+                "created_at": now.split('T')[0],
+                "updated_at": now.split('T')[0],
+                "tags": tags,
+                "status": "published"
+            }
+        except sqlite3.IntegrityError:
+            raise ValueError(f"Collection '{name}' already exists")
+        finally:
+            conn.close()
+    
+    def get_all_collections(self) -> List[Dict]:
+        """Get all collections"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM collections ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        collections = []
+        for row in rows:
+            collections.append({
+                "id": str(row[0]),
+                "name": row[1],
+                "description": row[2],
+                "category": row[3],
+                "author": row[4],
+                "document_count": row[5],
+                "created_at": row[6].split('T')[0] if 'T' in row[6] else row[6],
+                "updated_at": row[7].split('T')[0] if 'T' in row[7] else row[7],
+                "tags": json.loads(row[8]) if row[8] else [],
+                "status": row[9]
+            })
+        
+        return collections
+    
+    def delete_collection(self, name: str) -> bool:
+        """Delete a collection by name"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM collections WHERE name = ?', (name,))
+        deleted = cursor.rowcount > 0
+        
+        conn.commit()
+        conn.close()
+        
+        return deleted
+
+# Initialize collections database
+collections_db = CollectionsDB()
+
+# Cache retrievers per collection
+retrievers: Dict[str, MultiVectorRetriever] = {}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def extract_pdf_elements(file_path: str, output_path: str):
+    chunks = partition_pdf(
+        filename=file_path,
+        infer_table_structure=True,
+        strategy="fast",
+        extract_image_block_types=["Image"],
+        extract_image_block_to_payload=True,
+        chunking_strategy="by_title",
+        max_characters=10000,
+        combine_text_under_n_chars=2000,
+        new_after_n_chars=6000,
+    )
+    return chunks
+
+def separate_elements(chunks):
+    tables, texts = [], []
+    for chunk in chunks:
+        if "Table" in str(type(chunk)):
+            tables.append(chunk)
+        elif "CompositeElement" in str(type(chunk)):
+            texts.append(chunk)
+    images = get_images_base64(chunks)
+    return tables, texts, images
+
+def get_images_base64(chunks):
+    images_b64 = []
+    for chunk in chunks:
+        if "CompositeElement" in str(type(chunk)):
+            for el in chunk.metadata.orig_elements:
+                if "Image" in str(type(el)):
+                    images_b64.append(el.metadata.image_base64)
+    return images_b64
+
+def create_gemma_model():
+    return ChatOpenAI(
+        model="google/gemma-3-27b-it:free",
+        openai_api_key=os.environ["OPENROUTER_API_KEY"],
+        openai_api_base="https://openrouter.ai/api/v1",
+        temperature=0.5,
+    )
+
+def create_vision_model():
+    return ChatOpenAI(
+        model="google/gemma-3-27b-it:free",
+        openai_api_key=os.environ["OPENROUTER_API_KEY"],
+        openai_api_base="https://openrouter.ai/api/v1",
+        temperature=0.3,
+    )
+
+def create_summarization_chain():
+    prompt_text = """
+    You are an assistant tasked with summarizing tables and text.
+    Respond only with the summary, no intro or explanation.
+    Table or text chunk: {element}
+    """
+    prompt = ChatPromptTemplate.from_template(prompt_text)
+    model = create_gemma_model()
+    return {"element": lambda x: x} | prompt | model | StrOutputParser()
+
+def summarize_texts(texts):
+    chain = create_summarization_chain()
+    summaries = []
+    for t in texts:
+        try:
+            summaries.append(chain.invoke(t.text))
+        except Exception:
+            summaries.append(t.text[:500])
+    return summaries
+
+def summarize_tables(tables):
+    chain = create_summarization_chain()
+    summaries = []
+    for t in tables:
+        try:
+            summaries.append(chain.invoke(t.metadata.text_as_html))
+        except Exception:
+            summaries.append(t.metadata.text_as_html[:500])
+    return summaries
+
+def create_image_summarization_chain():
+    prompt_template = """Describe the image in detail. Be specific about graphs and diagrams."""
+    messages = [
+        (
+            "user",
+            [
+                {"type": "text", "text": prompt_template},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,{image}"}},
+            ],
+        )
+    ]
+    prompt = ChatPromptTemplate.from_messages(messages)
+    model = create_vision_model()
+    return prompt | model | StrOutputParser()
+
+def summarize_images(images):
+    chain = create_image_summarization_chain()
+    summaries = []
+    for img in images:
+        try:
+            summaries.append(chain.invoke({"image": img}))
+        except Exception:
+            summaries.append("Image could not be processed")
+    return summaries
+
+def determine_category(name: str) -> str:
+    """Determine category based on collection name"""
+    nameLower = name.lower()
+    
+    if any(keyword in nameLower for keyword in ['api', 'doc', 'guide', 'documentation']):
+        return 'Documentation'
+    elif any(keyword in nameLower for keyword in ['help', 'support', 'troubleshoot', 'faq']):
+        return 'Support'
+    elif any(keyword in nameLower for keyword in ['security', 'secure']):
+        return 'Security'
+    elif any(keyword in nameLower for keyword in ['tutorial', 'learn', 'how to']):
+        return 'Tutorial'
+    else:
+        words = name.split(' ')
+        return words[0].capitalize() if words else 'General'
+
+def generate_tags(name: str, category: str) -> List[str]:
+    """Generate tags based on collection name and category"""
+    words = name.lower().split(' ')
+    tags = [category.lower()]
+    
+    for word in words:
+        if len(word) > 2 and word not in tags and len(tags) < 4:
+            tags.append(word.capitalize())
+    
+    return tags
+
+# ============================================================================
+# EMBEDDINGS + VECTORSTORE
+# ============================================================================
+
+class SentenceTransformerEmbeddings(Embeddings):
+    def __init__(self, model_name="all-MiniLM-L6-v2"):
+        self.model = SentenceTransformer(model_name)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self.model.encode(texts).tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.model.encode([text])[0].tolist()
+
+def setup_vectorstore(collection_name: str):
+    embeddings = SentenceTransformerEmbeddings("all-MiniLM-L6-v2")
+    client = QdrantClient(
+        url=os.environ["QDRANT_URL"],
+        api_key=os.environ["QDRANT_API_KEY"],
+    )
+    try:
+        client.get_collection(collection_name)
+    except Exception:
+        client.recreate_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+        )
+
+    vector_store = QdrantVectorStore(
+        client=client,
+        collection_name=collection_name,
+        embedding=embeddings
+    )
+
+    store = InMemoryStore()
+
+    retriever = MultiVectorRetriever(vectorstore=vector_store, docstore=store, id_key="doc_id")
+    return retriever, "doc_id"
+
+def load_data_to_vectorstore(retriever, id_key, texts, text_summaries, tables, table_summaries, images, image_summaries):
+    if texts and text_summaries:
+        ids = [str(uuid.uuid4()) for _ in texts]
+        retriever.vectorstore.add_documents([Document(page_content=s, metadata={id_key: ids[i]}) for i, s in enumerate(text_summaries)])
+        retriever.docstore.mset(list(zip(ids, texts)))
+
+    if tables and table_summaries:
+        ids = [str(uuid.uuid4()) for _ in tables]
+        retriever.vectorstore.add_documents([Document(page_content=s, metadata={id_key: ids[i]}) for i, s in enumerate(table_summaries)])
+        retriever.docstore.mset(list(zip(ids, tables)))
+
+    if images and image_summaries:
+        ids = [str(uuid.uuid4()) for _ in images]
+        retriever.vectorstore.add_documents([Document(page_content=s, metadata={id_key: ids[i]}) for i, s in enumerate(image_summaries)])
+        retriever.docstore.mset(list(zip(ids, images)))
+
+# ============================================================================
+# RAG PIPELINE
+# ============================================================================
+
+def parse_docs(docs):
+    b64, text = [], []
+    for doc in docs:
+        try:
+            base64.b64decode(doc, validate=True)
+            b64.append(doc)
+        except Exception:
+            text.append(doc)
+    return {"images": b64, "texts": text}
+
+def build_prompt(kwargs):
+    docs = kwargs["context"]
+    q = kwargs["question"]
+
+    context_text = ""
+    for t in docs["texts"]:
+        if hasattr(t, "text"):
+            context_text += t.text
+        else:
+            context_text += str(t)
+
+    prompt_content = [{"type": "text", "text": f"Answer based on context:\n{context_text}\nQuestion: {q}"}]
+
+    for img in docs["images"]:
+        prompt_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img}"}})
+
+    return ChatPromptTemplate.from_messages([HumanMessage(content=prompt_content)])
+
+def create_rag_chain(retriever):
+    model = create_vision_model()
+    return (
+        {"context": retriever | RunnableLambda(parse_docs), "question": RunnablePassthrough()}
+        | RunnableLambda(build_prompt)
+        | model
+        | StrOutputParser()
+    )
+
+# ============================================================================
+# MCP TOOL DEFINITIONS
+# ============================================================================
+
+@mcp.tool()
+def get_collections() -> List[Dict[str, Any]]:
+    """
+    Get all knowledge base collections.
+    
+    Returns:
+        List of collections with metadata including name, description, category, etc.
+    """
+    try:
+        return collections_db.get_all_collections()
+    except Exception as e:
+        return [{"error": str(e)}]
+
+@mcp.tool()
+def create_collection(
+    name: str,
+    description: str = "",
+    category: str = "General",
+    author: str = "Admin User",
+    document_count: int = 0,
+    tags: List[str] = None
+) -> Dict[str, Any]:
+    """
+    Create a new knowledge base collection.
+    
+    Args:
+        name: Collection name (must be unique)
+        description: Collection description
+        category: Collection category
+        author: Collection author
+        document_count: Number of documents in collection
+        tags: List of tags for the collection
+        
+    Returns:
+        Created collection metadata
+    """
+    try:
+        if tags is None:
+            tags = []
+        return collections_db.create_collection(
+            name=name,
+            description=description,
+            category=category,
+            author=author,
+            document_count=document_count,
+            tags=tags
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Failed to create collection: {str(e)}"}
+
+@mcp.tool()
+def delete_collection(name: str) -> Dict[str, Any]:
+    """
+    Delete a collection and its vector data.
+    
+    Args:
+        name: Collection name to delete
+        
+    Returns:
+        Success or error message
+    """
+    try:
+        # Delete from SQLite
+        if collections_db.delete_collection(name):
+            # Delete from Qdrant
+            try:
+                client = QdrantClient(
+                    url=os.environ["QDRANT_URL"],
+                    api_key=os.environ["QDRANT_API_KEY"],
+                )
+                client.delete_collection(name)
+            except Exception as e:
+                print(f"Warning: Could not delete Qdrant collection: {e}")
+            
+            # Remove from retrievers cache
+            if name in retrievers:
+                del retrievers[name]
+            
+            return {"message": f"Collection '{name}' deleted successfully"}
+        else:
+            return {"error": "Collection not found"}
+    except Exception as e:
+        return {"error": f"Failed to delete collection: {str(e)}"}
+
+@mcp.tool()
+def query_rag(
+    question: str,
+    collection_name: str = "default_collection"
+) -> Dict[str, Any]:
+    """
+    Query the RAG system to retrieve relevant information from a collection.
+    
+    Args:
+        question: The question to ask
+        collection_name: Name of the collection to query
+        
+    Returns:
+        Dictionary containing the question, collection, and retrieved chunks
+    """
+    try:
+        # Ensure retriever is ready
+        if collection_name not in retrievers:
+            retriever, _ = setup_vectorstore(collection_name)
+            retrievers[collection_name] = retriever
+
+        retriever = retrievers[collection_name]
+
+        # Step 1: Retrieve top-k summaries from vectorstore
+        top_k = 3
+        docs = retriever.vectorstore.similarity_search(question, k=top_k)
+
+        # Step 2: Use doc_id to fetch original content from docstore
+        original_chunks = []
+        for d in docs:
+            doc_id = d.metadata.get("doc_id")
+            if doc_id:
+                result = retriever.docstore.mget([doc_id])
+                if result and result[0] is not None:
+                    original = result[0]
+                    # Handle different element types
+                    if hasattr(original, "text"):
+                        original_chunks.append(original.text)
+                    elif hasattr(original, "metadata") and hasattr(original.metadata, "text_as_html"):
+                        original_chunks.append(original.metadata.text_as_html)
+                    else:
+                        original_chunks.append(str(original))
+                else:
+                    # fallback to summary if original not found
+                    original_chunks.append(d.page_content)
+
+        return {
+            "question": question,
+            "collection": collection_name,
+            "retrieved_chunks": original_chunks
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to query RAG: {str(e)}"}
+
+@mcp.tool()
+def process_pdf_content(
+    pdf_content: str,
+    collection_name: str
+) -> Dict[str, Any]:
+    """
+    Process PDF content and store it in the RAG system.
+    
+    Args:
+        pdf_content: Base64 encoded PDF content
+        collection_name: Name of the collection to store the content in
+        
+    Returns:
+        Success message with processing details
+    """
+    try:
+        # Decode base64 content
+        pdf_data = base64.b64decode(pdf_content)
+        
+        # Create temporary file
+        temp_file = f"./temp_{uuid.uuid4()}.pdf"
+        with open(temp_file, "wb") as f:
+            f.write(pdf_data)
+
+        retriever, id_key = setup_vectorstore(collection_name)
+
+        # Step 1: Extract chunks
+        chunks = extract_pdf_elements(temp_file, "./content/")
+        tables, texts, images = separate_elements(chunks)
+
+        # Step 2: Summarize
+        text_summaries = summarize_texts(texts) if texts else []
+        table_summaries = summarize_tables(tables) if tables else []
+        image_summaries = summarize_images(images) if images else []
+
+        # Step 3: Store everything in vectorstore
+        load_data_to_vectorstore(
+            retriever, id_key,
+            texts, text_summaries,
+            tables, table_summaries,
+            images, image_summaries
+        )
+
+        retrievers[collection_name] = retriever
+
+        # Step 4: Create or update collection metadata
+        try:
+            category = determine_category(collection_name)
+            tags = generate_tags(collection_name, category)
+            
+            collections_db.create_collection(
+                name=collection_name,
+                description=f"Knowledge base created from PDF document",
+                category=category,
+                document_count=1,
+                tags=tags
+            )
+        except ValueError:
+            # Collection already exists, update document count
+            collections_db.update_collection(collection_name, document_count=1)
+
+        # Clean up temp file
+        os.remove(temp_file)
+
+        return {
+            "message": "PDF processed and stored successfully",
+            "collection": collection_name,
+            "text_chunks": len(texts),
+            "table_chunks": len(tables),
+            "image_chunks": len(images)
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to process PDF: {str(e)}"}
+
+# ============================================================================
+# SERVER STARTUP
+# ============================================================================
+
+if __name__ == "__main__":
+    # Run the MCP server
+    mcp.run() and orchestrator agent: from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+import requests
+from google.adk import Agent
+from google.adk.a2a.utils.agent_to_a2a import to_a2a
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent, AGENT_CARD_WELL_KNOWN_PATH
+from google.adk.tools.tool_context import ToolContext
+from google.adk.tools import load_memory
+# Note: Using ADK's built-in transfer mechanism
+from google.genai import types
+
+import asyncio
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.memory import InMemoryMemoryService
+import subprocess
+import shutil
+import sys
+import time
+from pathlib import Path
+
+# Import orchestrator logging system
+from .core.logging import (
+    log_model_usage, log_session_event, log_failure, log_agent_discovery, 
+    log_io_data, LoggedOperation
+)
+
+# Import RAG integration
+from .rag.rag_integration import create_rag_toolset, get_rag_tools_info
+
+
+
+# Load environment variables from project root without overriding existing env vars
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    ENV_DEV_PATH = PROJECT_ROOT / "env.dev"
+    ENV_PATH = PROJECT_ROOT / ".env"
+    if ENV_DEV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_DEV_PATH, override=False)
+        print("Loaded env.dev from project root")
+    elif ENV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_PATH, override=False)
+        print("Loaded .env from project root")
+except ImportError:
+    print("python-dotenv not installed. Install with: pip install python-dotenv")
+except Exception as e:
+    print(f"Could not load env files: {e}")
+
+
+# Initialize LiteLLM for all agents
+try:
+    from .core.base_agent import initialize_llm_for_all_agents
+    initialize_llm_for_all_agents()
+    print("✅ LiteLLM initialized successfully")
+except Exception as e:
+    print(f"⚠️ LiteLLM initialization failed: {e}")
+    print("   Please check your API keys in .env file")
+
+# --- Auto-start A2A API server for sub-agents when running `adk web .` ---
+PORT = 8100
+def _is_a2a_server_ready(port: int = PORT) -> bool:
+    base = f"http://localhost:{port}"
+    endpoints = [
+        f"{base}/a2a/recommendation_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+        f"{base}/a2a/critic_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+        f"{base}/a2a/summary_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+    ]
+    try:
+        for url in endpoints:
+            start_time = time.time()
+            r = requests.get(url, timeout=0.8)
+            response_time_ms = (time.time() - start_time) * 1000
+            
+            # Extract agent name from URL
+            agent_name = url.split('/a2a/')[1].split('/')[0] if '/a2a/' in url else "unknown"
+            
+            if r.status_code != 200:
+                print(f"   ❌ {url} returned {r.status_code}")
+                log_agent_discovery(
+                    event_type="agent_card_check_failed",
+                    agent_name=agent_name,
+                    endpoint=url,
+                    status=f"HTTP_{r.status_code}",
+                    response_time_ms=response_time_ms
+                )
+                return False
+            else:
+                print(f"   ✅ {url} is ready")
+                log_agent_discovery(
+                    event_type="agent_card_check_success",
+                    agent_name=agent_name,
+                    endpoint=url,
+                    status="ready",
+                    response_time_ms=response_time_ms
+                )
+        return True
+    except Exception as e:
+        print(f"   ❌ Connection failed: {e}")
+        log_agent_discovery(
+            event_type="agent_card_check_error",
+            agent_name="all",
+            endpoint=base,
+            status="connection_failed",
+            error_message=str(e)
+        )
+        return False
+
+
+def _start_a2a_server_if_needed(port: int = PORT, base_dir: Optional[str] = None) -> None:
+    """
+    Ensure the A2A API server that serves the sub-agents is running.
+    If not, launch it in the background pointing at the agents directory.
+    """
+    # Allow opt-out via env var
+    if os.getenv("APPEVOLVE_AGENTS_AUTOSTART_DISABLED", "").lower() in {"1", "true", "yes"}:
+        print("ℹ APPEVOLVE_AGENTS_AUTOSTART_DISABLED is set; skipping auto-start of A2A server.")
+        log_agent_discovery(
+            event_type="a2a_autostart_disabled",
+            agent_name="all",
+            port=port
+        )
+        return
+
+    if _is_a2a_server_ready(port):
+        print(f"✅ A2A server already running on port {port}")
+        log_agent_discovery(
+            event_type="a2a_server_already_running",
+            agent_name="all",
+            port=port
+        )
+        return
+
+    agents_dir = base_dir or str(Path(__file__).parent.resolve())
+
+    adk_path = shutil.which("adk")
+    if not adk_path:
+        print("❌ 'adk' CLI not found on PATH. Please install or add to PATH to auto-start the A2A server.")
+        print("   Install with: pip install google-adk")
+        log_agent_discovery(
+            event_type="a2a_startup_failed",
+            agent_name="all",
+            port=port,
+            error_message="ADK CLI not found on PATH"
+        )
+        return
+
+    cmd = [adk_path, "api_server", "--a2a", "--port", str(port), "--reload_agents", "."]
+    try:
+        print(f"🚀 Launching A2A API server on port {port} (cwd={agents_dir})...")
+        print(f"   Command: {' '.join(cmd)}")
+        
+        log_agent_discovery(
+            event_type="a2a_server_starting",
+            agent_name="all",
+            port=port,
+            command=" ".join(cmd),
+            working_directory=agents_dir
+        )
+        
+        # Start with better error handling - capture stderr for debugging
+        process = subprocess.Popen(
+            cmd,
+            cwd=agents_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform.startswith("win") else 0,
+        )
+        
+        # Give it a moment to start
+        time.sleep(2)
+        
+        # Check if process is still running
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            print(f"❌ A2A server process exited immediately")
+            print(f"   stdout: {stdout.decode() if stdout else 'None'}")
+            print(f"   stderr: {stderr.decode() if stderr else 'None'}")
+            log_agent_discovery(
+                event_type="a2a_server_startup_failed",
+                agent_name="all",
+                port=port,
+                error_message="Process exited immediately",
+                stdout=stdout.decode() if stdout else None,
+                stderr=stderr.decode() if stderr else None
+            )
+            return
+            
+    except Exception as e:
+        print(f"❌ Failed to start A2A server: {e}")
+        log_agent_discovery(
+            event_type="a2a_server_startup_error",
+            agent_name="all",
+            port=port,
+            error_message=str(e)
+        )
+        return
+
+    # Wait for readiness (up to ~30s)
+    print(f"⏳ Waiting for A2A server to become ready on port {port}...")
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if _is_a2a_server_ready(port):
+            print("✅ A2A server is ready")
+            log_agent_discovery(
+                event_type="a2a_server_ready",
+                agent_name="all",
+                port=port,
+                startup_time_ms=(time.time() - (deadline - 30)) * 1000
+            )
+            return
+        time.sleep(1)
+        print(f"   Still waiting... ({int(deadline - time.time())}s remaining)")
+
+    print("❌ A2A server did not become ready in time. Orchestrator may fail to reach sub-agents.")
+    print("   Try starting manually: adk api_server --a2a --port 8100 .")
+    log_agent_discovery(
+        event_type="a2a_server_timeout",
+        agent_name="all",
+        port=port,
+        timeout_seconds=30
+    )
+
+
+# Auto-start on import so users can just run `adk web .`
+_start_a2a_server_if_needed(port=PORT)
+
+# Modernization agents (Summary, Recommendation, and Critic)
+# Point RemoteA2aAgent to the A2A server (8100), which serves the agent card JSON.
+summary_agent = RemoteA2aAgent(
+    name="summary_agent",
+    description="Extracts and structures client information for app modernization analysis",
+    agent_card=f"http://localhost:{PORT}/a2a/summary_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+)
+
+recommendation_agent = RemoteA2aAgent(
+    name="recommendation_agent",
+    description="Generate app modernization recommendations based on client context and portfolio.",
+    agent_card=f"http://localhost:{PORT}/a2a/recommendation_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+)
+
+critic_agent = RemoteA2aAgent(
+    name="critic_agent",
+    description="Validate and refine modernization recommendations for feasibility and alignment.",
+    agent_card=f"http://localhost:{PORT}/a2a/critic_agent{AGENT_CARD_WELL_KNOWN_PATH}",
+)
+
+# 2) Note: Using ADK's built-in transfer_to_agent function directly in instructions
+
+# 3) Create a root agent and register the remotes as sub_agents
+# Use ADK native model selection
+import os
+from google.adk.models.lite_llm import LiteLlm
+
+# Determine model based on environment variables
+llm_model = os.getenv("LLM_MODEL") or os.getenv("HOST_AGENT_MODEL") or os.getenv("ADK_RUNTIME_MODEL", "gemini-2.0-flash")
+backend = os.getenv("ADK_AGENT_BACKEND", "gemini")
+
+# CRITICAL: Orchestrator MUST use Gemini for proper delegation support
+# LiteLLM models don't properly handle ADK's transfer_to_agent function
+orchestrator_model = "gemini-2.0-flash"  # Force Gemini for orchestrator
+
+# Initialize RAG MCP toolset
+rag_toolset = create_rag_toolset()
+
+root_agent = Agent(
+    model=orchestrator_model,  # Google ADK compatible model or LiteLLM adapter
+    name="modernization_orchestrator_agent",
+    description=(
+        "Orchestrator that coordinates modernization recommendation and critique by delegating to specialized agents."
+    ),
+    instruction="""
+    Assessment Orchestrator Agent Prompt
+    
+    Role: You are the Master Assessment Orchestrator for application modernization. Your sole responsibility is to route requests to the correct specialized sub-agent or handle RAG operations directly. You MUST NOT generate recommendations, critiques, or any other final content yourself. Your purpose is to coordinate, not to create.
+    
+    Available Sub-Agents:
+    - recommendation_agent: For new modernization assessment requests
+    - critic_agent: For recommendation reviews and critiques  
+    - summary_agent: For client input summarization
+    
+    Available RAG Tools (use directly without transferring to sub-agents):
+    - get_collections: List all knowledge base collections
+    - create_collection: Create a new knowledge base collection
+    - delete_collection: Delete a collection and its vector data
+    - query_rag: Query the RAG system for relevant information
+    - process_pdf_content: Process and store PDF documents
+    
+    Decision-Making Logic:
+    - RAG Operations: If the user requests knowledge base operations, document processing, information retrieval, or asks about available collections, use the appropriate RAG tools directly.
+    - Initial Request (Recommendation Generation): If the user's input is a new, unstructured request for an application modernization assessment, raw collection of survey responses, OR any general inquiry about modernization, you MUST transfer to recommendation_agent immediately.
+    - Recommendation Review (Critical Review): If the user's input is a full "Recommendation Report" or explicitly asks for a "review" or "critique," you MUST transfer to critic_agent immediately.
+    - Client Input Summarization: If the user's input is raw client data that needs structuring, transfer to summary_agent.
+    - Default Behavior: For ANY other input (including greetings, questions about capabilities, or unclear requests), transfer to recommendation_agent as the default handler.
+    
+    Critical Instructions:
+    - For RAG operations, use the RAG tools directly without transferring to sub-agents
+    - For all other operations, ALWAYS transfer to the appropriate sub-agent - never respond directly
+    - Do not provide generic responses or ask for clarification
+    - Your only job is to analyze the input and either use RAG tools or transfer to the correct sub-agent
+    - Use the transfer_to_agent function to delegate: transfer_to_agent("agent_name", tool_context)
+    - When in doubt, transfer to recommendation_agent as the default handler
+    - IMPORTANT: You must either use RAG tools or call transfer_to_agent() - do not provide any direct responses
+    """,
+    global_instruction=(
+        "You are ModernizationOrchestrator, coordinating recommendation and critique workflows."
+    ),
+    sub_agents=[summary_agent, recommendation_agent, critic_agent],
+    generate_content_config=types.GenerateContentConfig(
+        safety_settings=[
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.OFF,
+            ),
+        ]
+    ),
+    tools=[load_memory] + ([rag_toolset] if rag_toolset else []),
+)
+
+# Log orchestrator agent creation and model configuration
+model_name = str(orchestrator_model)
+# Determine provider based on model name
+if "anthropic.claude" in model_name or model_name.startswith("us.anthropic.") or model_name.startswith("eu.anthropic.") or model_name.startswith("ap.anthropic.") or model_name.startswith("global.anthropic."):
+    provider = "bedrock"
+elif model_name.startswith("gemini"):
+    provider = "google"
+elif model_name.startswith(("gpt", "o1")):
+    provider = "openai"
+elif model_name.startswith("claude"):
+    provider = "anthropic"
+elif model_name.startswith("grok"):
+    provider = "grok"
+else:
+    provider = "unknown"
+
+log_model_usage(
+    agent_name="modernization_orchestrator_agent",
+    model=model_name,
+    provider=provider,
+    success=True
+)
+
+# Log sub-agent discovery
+for sub_agent in [summary_agent, recommendation_agent, critic_agent]:
+    log_agent_discovery(
+        event_type="sub_agent_registered",
+        agent_name=sub_agent.name,
+        endpoint=getattr(sub_agent, 'agent_card', 'unknown')
+    )
+
+# --- Shared services for memory persistence ---
+session_service = InMemorySessionService()
+memory_service = InMemoryMemoryService()
+
+runner = Runner(
+    agent=root_agent,
+    app_name="modernization_orchestrator_app",
+    session_service=session_service,
+    memory_service=memory_service,
+)
+ 

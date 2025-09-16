@@ -1,0 +1,21 @@
+{
+  "name": "booking_agent",
+  "displayName": "Booking Agent",
+  "description": "Reserves items, accepts payment, and confirms bookings.",
+  "version": "1.0.0",
+  "url": "http://localhost:8100/a2a/booking_agent",
+  "authentication": { "type": "none" },
+  "capabilities": { "streaming": false, "functions": true },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "type": "Agent",
+  "tools": [
+    { "name": "reserve_items", "description": "POST /trips/{id}/reserve", "inputs": { "id_token": "string", "itinerary_id": "string", "items": "object[]", "hold_ttl_minutes": "int?", "idempotency_key": "string?" }, "outputs": { "reservation_id": "string", "total_amount": "number" } },
+    { "name": "create_checkout", "description": "POST /payments/checkout", "inputs": { "id_token": "string", "reservation_id": "string", "amount": "number", "currency": "string" }, "outputs": { "payment_id": "string", "client_secret": "string" } },
+    { "name": "finalize_booking", "description": "POST /trips/{id}/book", "inputs": { "id_token": "string", "itinerary_id": "string", "reservation_id": "string", "payment_id": "string" }, "outputs": { "booking_id": "string", "status": "string" } }
+  ],
+  "skills": [
+    { "id": "booking", "name": "Booking Flow", "description": "Reservations, payments, bookings lifecycle." }
+  ]
+}
+
