@@ -1,0 +1,30 @@
+{
+  "name": "itinerary_planner",
+  "displayName": "Itinerary Planner Agent",
+  "description": "Generates initial itineraries and enriches with maps and local context.",
+  "version": "1.0.0",
+  "url": "http://localhost:8100/a2a/itinerary_planner",
+  "authentication": { "type": "none" },
+  "capabilities": { "streaming": true, "functions": true },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "type": "Agent",
+  "tools": [
+    {
+      "name": "generate_itinerary",
+      "description": "Create a new itinerary via backend /trips/create",
+      "inputs": { "id_token": "string", "destination": "string", "origin": "string?", "start_date": "string?", "end_date": "string?", "duration_days": "int?", "budget_in_inr": "number?", "themes": "string[]?", "travelers": "int?", "preferences": "object?" },
+      "outputs": { "itinerary_id": "string" }
+    },
+    {
+      "name": "fetch_itinerary",
+      "description": "Fetch itinerary by id via backend /trips/{id}",
+      "inputs": { "id_token": "string", "itinerary_id": "string" },
+      "outputs": { "itinerary": "object" }
+    }
+  ],
+  "skills": [
+    { "id": "planning", "name": "Trip Planning", "description": "Budget-aware itinerary synthesis for India travel." }
+  ]
+}
+

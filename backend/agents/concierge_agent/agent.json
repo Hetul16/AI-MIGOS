@@ -1,0 +1,19 @@
+{
+  "name": "concierge_agent",
+  "displayName": "Concierge Agent",
+  "description": "Multilingual conversational guide coordinating planner, adjuster, gems, and booking.",
+  "version": "1.0.0",
+  "url": "http://localhost:8100/a2a/concierge_agent",
+  "authentication": { "type": "none" },
+  "capabilities": { "streaming": true, "functions": true },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "type": "Agent",
+  "tools": [
+    { "name": "chat", "description": "Conversational interface with delegation.", "inputs": { "message": "string", "locale": "string?" }, "outputs": { "reply": "string" } }
+  ],
+  "skills": [
+    { "id": "multilingual", "name": "Multilingual Support", "description": "Supports Indian languages using Gemini/Vertex." }
+  ]
+}
+

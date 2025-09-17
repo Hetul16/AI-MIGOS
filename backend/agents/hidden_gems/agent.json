@@ -1,0 +1,24 @@
+{
+  "name": "hidden_gems",
+  "displayName": "Hidden Gems Agent",
+  "description": "Curates points of interest based on themes and proximity.",
+  "version": "1.0.0",
+  "url": "http://localhost:8100/a2a/hidden_gems",
+  "authentication": { "type": "none" },
+  "capabilities": { "streaming": false, "functions": true },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "type": "Agent",
+  "tools": [
+    {
+      "name": "list_hidden_gems",
+      "description": "Call backend /trips/{id}/hidden_gems with optional filter and radius.",
+      "inputs": { "id_token": "string", "itinerary_id": "string", "filter": "string?", "radius_m": "int?" },
+      "outputs": { "gems": "object[]" }
+    }
+  ],
+  "skills": [
+    { "id": "poi_curation", "name": "POI Curation", "description": "Theme-aligned POI selection for India travel." }
+  ]
+}
+
